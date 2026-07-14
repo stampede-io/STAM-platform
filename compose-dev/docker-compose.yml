@@ -1,0 +1,88 @@
+services:
+  catalog:
+    build:
+      context: ../../STAM-catalog
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      DB_HOST: catalog-db
+      DB_PORT: 5432
+      DB_NAME: ${CATALOG_DB_NAME}
+      DB_USERNAME: ${CATALOG_DB_USER}
+      DB_PASSWORD: ${CATALOG_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  booking:
+    build:
+      context: ../../STAM-booking
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    depends_on:
+      booking-db:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      DB_HOST: booking-db
+      DB_PORT: 5432
+      DB_NAME: ${BOOKING_DB_NAME}
+      DB_USERNAME: ${BOOKING_DB_USER}
+      DB_PASSWORD: ${BOOKING_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  catalog-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${CATALOG_DB_NAME}
+      POSTGRES_USER: ${CATALOG_DB_USER}
+      POSTGRES_PASSWORD: ${CATALOG_DB_PASSWORD}
+    volumes:
+      - catalog-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CATALOG_DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  booking-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${BOOKING_DB_NAME}
+      POSTGRES_USER: ${BOOKING_DB_USER}
+      POSTGRES_PASSWORD: ${BOOKING_DB_PASSWORD}
+    volumes:
+      - booking-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BOOKING_DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  catalog-db-data:
+  booking-db-data:
