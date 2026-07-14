@@ -16,6 +16,9 @@ services:
       DB_NAME: ${CATALOG_DB_NAME}
       DB_USERNAME: ${CATALOG_DB_USER}
       DB_PASSWORD: ${CATALOG_DB_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -40,6 +43,9 @@ services:
       DB_NAME: ${BOOKING_DB_NAME}
       DB_USERNAME: ${BOOKING_DB_USER}
       DB_PASSWORD: ${BOOKING_DB_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
