@@ -1,0 +1,34 @@
+name: nightly-e2e
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: stampede-io/STAM-platform
+
+      - name: Clone all service repos
+        run: bash scripts/clone-all.sh
+
+      - name: Start compose stack
+        run: |
+          cd compose-dev
+          cp .env.example .env
+          docker compose up -d --wait
+        timeout-minutes: 10
+
+      # Placeholder: real e2e tests added at Sprint 1 end (STAM-22)
+      - name: Smoke check
+        run: |
+          curl -f http://localhost:8081/actuator/health
+          curl -f http://localhost:8082/actuator/health
+          echo "Smoke check passed"
+
+      - name: Tear down
+        if: always()
+        run: cd compose-dev && docker compose down -v
