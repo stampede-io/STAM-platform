@@ -56,6 +56,48 @@ services:
       retries: 5
       start_period: 30s
 
+  payment:
+    build:
+      context: ../../STAM-payment
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8080"
+    restart: on-failure
+    depends_on:
+      payment-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      DB_HOST: payment-db
+      DB_PORT: 5432
+      DB_NAME: ${PAYMENT_DB_NAME}
+      DB_USERNAME: ${PAYMENT_DB_USER}
+      DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PAYMENT_FAILURE_RATE: ${PAYMENT_FAILURE_RATE}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  payment-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${PAYMENT_DB_NAME}
+      POSTGRES_USER: ${PAYMENT_DB_USER}
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD}
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAYMENT_DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   catalog-db:
     image: postgres:16-alpine
     environment:
@@ -161,4 +203,5 @@ services:
 volumes:
   catalog-db-data:
   booking-db-data:
+  payment-db-data:
   kafka-data:
