@@ -11,6 +11,9 @@ services:
         condition: service_healthy
     environment:
       SERVER_PORT: 8080
+      SPRING_PROFILES_ACTIVE: dev
+      JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=384m -Xmx512m"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       DB_HOST: catalog-db
       DB_PORT: 5432
       DB_NAME: ${CATALOG_DB_NAME}
@@ -40,6 +43,9 @@ services:
         condition: service_healthy
     environment:
       SERVER_PORT: 8080
+      JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=384m -Xmx768m"
+      HIKARI_MAX_POOL: "150"
+      HIKARI_MIN_IDLE: "20"
       DB_HOST: booking-db
       DB_PORT: 5432
       DB_NAME: ${BOOKING_DB_NAME}
@@ -49,6 +55,7 @@ services:
       REDIS_PORT: ${REDIS_PORT}
       HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CATALOG_URL: http://catalog:8080
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -70,6 +77,7 @@ services:
         condition: service_healthy
     environment:
       SERVER_PORT: 8080
+      JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=384m -Xmx512m"
       DB_HOST: payment-db
       DB_PORT: 5432
       DB_NAME: ${PAYMENT_DB_NAME}
@@ -114,6 +122,7 @@ services:
 
   booking-db:
     image: postgres:16-alpine
+    command: ["postgres", "-c", "max_connections=400", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_DB: ${BOOKING_DB_NAME}
       POSTGRES_USER: ${BOOKING_DB_USER}
@@ -137,7 +146,7 @@ services:
       retries: 5
 
   kafka:
-    image: apache/kafka:3.9.0
+    image: apache/kafka:3.8.0
     ports:
       - "9092:9092"
     environment:
@@ -154,8 +163,6 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
-    volumes:
-      - kafka-data:/tmp/kraft-combined-logs
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
       interval: 10s
@@ -164,7 +171,7 @@ services:
       start_period: 30s
 
   kafka-init:
-    image: apache/kafka:3.9.0
+    image: apache/kafka:3.8.0
     depends_on:
       kafka:
         condition: service_healthy
@@ -204,4 +211,3 @@ volumes:
   catalog-db-data:
   booking-db-data:
   payment-db-data:
-  kafka-data:
