@@ -2,10 +2,10 @@
 
 **High-concurrency event ticketing that proves zero oversells under 1,000-VU flash-sale load.**
 
+[![catalog CI](https://github.com/stampede-io/STAM-catalog/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/stampede-io/STAM-catalog/actions/workflows/ci.yml?query=branch%3Amain)
+[![booking CI](https://github.com/stampede-io/STAM-booking/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/stampede-io/STAM-booking/actions/workflows/ci.yml?query=branch%3Amain)
+[![payment CI](https://github.com/stampede-io/STAM-payment/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/stampede-io/STAM-payment/actions/workflows/ci.yml?query=branch%3Amain)
 [![Nightly E2E](https://github.com/stampede-io/STAM-platform/actions/workflows/nightly.yml/badge.svg)](https://github.com/stampede-io/STAM-platform/actions/workflows/nightly.yml)
-[![catalog CI](https://github.com/stampede-io/STAM-catalog/actions/workflows/ci.yml/badge.svg?branch=Dev)](https://github.com/stampede-io/STAM-catalog/actions/workflows/ci.yml)
-[![booking CI](https://github.com/stampede-io/STAM-booking/actions/workflows/ci.yml/badge.svg?branch=Dev)](https://github.com/stampede-io/STAM-booking/actions/workflows/ci.yml)
-[![payment CI](https://github.com/stampede-io/STAM-payment/actions/workflows/ci.yml/badge.svg?branch=Dev)](https://github.com/stampede-io/STAM-payment/actions/workflows/ci.yml)
 [![release](https://img.shields.io/badge/release-v0.1.0-blue)](https://github.com/stampede-io/STAM-platform/releases/tag/v0.1.0)
 
 > **Milestone 1 demo video:** *(link goes here after recording — see [STAM-209](https://puliththewmika-dev.atlassian.net/browse/STAM-209))*
