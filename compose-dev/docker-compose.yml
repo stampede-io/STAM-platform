@@ -1,4 +1,30 @@
 services:
+  identity:
+    build:
+      context: ../../STAM-identity
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8080"
+    restart: on-failure
+    depends_on:
+      identity-db:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      SPRING_PROFILES_ACTIVE: dev
+      JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=384m -Xmx512m"
+      DB_HOST: identity-db
+      DB_PORT: 5432
+      DB_NAME: ${IDENTITY_DB_NAME}
+      DB_USERNAME: ${IDENTITY_DB_USER}
+      DB_PASSWORD: ${IDENTITY_DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   catalog:
     build:
       context: ../../STAM-catalog
@@ -91,6 +117,20 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  identity-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${IDENTITY_DB_NAME}
+      POSTGRES_USER: ${IDENTITY_DB_USER}
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD}
+    volumes:
+      - identity-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${IDENTITY_DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   payment-db:
     image: postgres:16-alpine
@@ -208,6 +248,7 @@ services:
       start_period: 20s
 
 volumes:
+  identity-db-data:
   catalog-db-data:
   booking-db-data:
   payment-db-data:
