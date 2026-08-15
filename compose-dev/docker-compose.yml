@@ -121,6 +121,33 @@ services:
       retries: 5
       start_period: 30s
 
+  gateway:
+    build:
+      context: ../../STAM-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8080"
+    restart: on-failure
+    depends_on:
+      identity:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=256m -Xmx384m"
+      IDENTITY_URI: http://identity:8080
+      CATALOG_URI: http://catalog:8080
+      BOOKING_URI: http://booking:8080
+      PAYMENT_URI: http://payment:8080
+      NOTIFICATION_URI: http://notification:8080
+      JWK_SET_URI: http://identity:8080/oauth2/jwks
+      CORS_ALLOWED_ORIGIN: http://localhost:3000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   identity-db:
     image: postgres:16-alpine
     environment:
