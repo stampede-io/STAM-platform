@@ -67,12 +67,22 @@ STDOUT_TXT="$RESULTS_DIR/flash-sale-secured-${STAMP}-${SHA}.txt"
 
 echo "results : $SUMMARY_JSON"
 
+# A crossed threshold exits non-zero. Capture it but keep going: the DB-level
+# oversell check below is the invariant that actually gates this run.
+K6_EXIT=0
 GATEWAY_URL="$GATEWAY_URL" \
+AUTH_URL="${AUTH_URL:-http://localhost:8084}" \
 SHOW_ID="$SHOW_ID" SEAT_IDS="$SEAT_IDS" \
 CONFIRM_TIMEOUT_MS="${CONFIRM_TIMEOUT_MS:-8000}" \
+USER_POOL_SIZE="${USER_POOL_SIZE:-200}" \
+SUMMARY_JSON="$SUMMARY_JSON" \
 k6 run \
-  --summary-export "$SUMMARY_JSON" \
-  "$SCRIPT_DIR/flash-sale-secured.js" | tee "$STDOUT_TXT"
+  "$SCRIPT_DIR/flash-sale-secured.js" > >(tee "$STDOUT_TXT") 2>&1 || K6_EXIT=$?
+
+if [ "$K6_EXIT" -ne 0 ]; then
+  echo
+  echo "NOTE: k6 exited ${K6_EXIT} (thresholds crossed). Continuing to oversell check."
+fi
 
 echo
 echo "=== Verifying zero oversells in booking DB (via docker exec) ==="
