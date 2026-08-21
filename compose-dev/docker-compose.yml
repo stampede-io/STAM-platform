@@ -1,4 +1,77 @@
 services:
+  eureka-server:
+    build:
+      context: ../eureka-server
+      dockerfile: Dockerfile
+    ports:
+      - "8761:8761"
+    restart: on-failure
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8761/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  config-server:
+    build:
+      context: ../config-server
+      dockerfile: Dockerfile
+    ports:
+      - "8888:8888"
+    restart: on-failure
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m"
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+    volumes:
+      - ../config-repo:/config-repo
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8888/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  identity:
+    build:
+      context: ../../STAM-identity
+      dockerfile: Dockerfile
+    ports:
+      - "8084:8080"
+    restart: on-failure
+    depends_on:
+      identity-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      SPRING_PROFILES_ACTIVE: dev
+      JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=384m -Xmx512m"
+      DB_HOST: identity-db
+      DB_PORT: 5432
+      DB_NAME: ${IDENTITY_DB_NAME}
+      DB_USERNAME: ${IDENTITY_DB_USER}
+      DB_PASSWORD: ${IDENTITY_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   catalog:
     build:
       context: ../../STAM-catalog
@@ -8,6 +81,10 @@ services:
     restart: on-failure
     depends_on:
       catalog-db:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      config-server:
         condition: service_healthy
     environment:
       SERVER_PORT: 8080
@@ -22,6 +99,8 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -41,6 +120,10 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     environment:
       SERVER_PORT: 8080
       JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=384m -Xmx768m"
@@ -56,6 +139,8 @@ services:
       HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       CATALOG_URL: http://catalog:8080
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
@@ -75,6 +160,10 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
     environment:
       SERVER_PORT: 8080
       JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=384m -Xmx512m"
@@ -85,12 +174,103 @@ services:
       DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       PAYMENT_FAILURE_RATE: ${PAYMENT_FAILURE_RATE}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  notification:
+    build:
+      context: ../../STAM-notification
+      dockerfile: Dockerfile
+    ports:
+      - "8086:8080"
+    restart: on-failure
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=384m -Xmx512m"
+      DB_HOST: notification-db
+      DB_PORT: 5432
+      DB_NAME: ${NOTIFICATION_DB_NAME}
+      DB_USERNAME: ${NOTIFICATION_DB_USER}
+      DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MAIL_HOST: mailhog
+      MAIL_PORT: 1025
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  gateway:
+    build:
+      context: ../../STAM-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8085:8080"
+    restart: on-failure
+    depends_on:
+      identity:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      eureka-server:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8080
+      JAVA_TOOL_OPTIONS: "-XX:MaxMetaspaceSize=256m -Xmx384m"
+      IDENTITY_URI: http://identity:8080
+      CATALOG_URI: http://catalog:8080
+      BOOKING_URI: http://booking:8080
+      PAYMENT_URI: http://payment:8080
+      NOTIFICATION_URI: http://notification:8080
+      JWK_SET_URI: http://identity:8080/oauth2/jwks
+      CORS_ALLOWED_ORIGIN: http://localhost:3000
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://eureka-server:8761/eureka
+      SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8888
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  identity-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${IDENTITY_DB_NAME}
+      POSTGRES_USER: ${IDENTITY_DB_USER}
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD}
+    volumes:
+      - identity-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${IDENTITY_DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   payment-db:
     image: postgres:16-alpine
@@ -119,6 +299,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  notification-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${NOTIFICATION_DB_NAME}
+      POSTGRES_USER: ${NOTIFICATION_DB_USER}
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATION_DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 
   booking-db:
     image: postgres:16-alpine
@@ -184,7 +384,7 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payments.commands.dlq   --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payments.events         --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic payments.events.dlq     --partitions 3 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic identity.audit          --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic identity.audit          --partitions 3 --replication-factor 1 --config retention.ms=-1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic identity.audit.dlq      --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic notifications.requests     --partitions 3 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic notifications.requests.dlq --partitions 3 --replication-factor 1
@@ -208,6 +408,8 @@ services:
       start_period: 20s
 
 volumes:
+  identity-db-data:
   catalog-db-data:
   booking-db-data:
   payment-db-data:
+  notification-db-data:

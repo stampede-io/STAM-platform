@@ -4,15 +4,17 @@ on:
     - cron: '0 1 * * *'
   workflow_dispatch:
 
+env:
+  CI: true
+
 jobs:
-  e2e:
+  smoke:
+    name: Compose smoke check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          repository: stampede-io/STAM-platform
 
-      - name: Clone all service repos
+      - name: Clone service repos
         run: bash scripts/clone-all.sh
 
       - name: Start compose stack
@@ -22,8 +24,7 @@ jobs:
           docker compose up -d --wait
         timeout-minutes: 10
 
-      # Placeholder: real e2e tests added at Sprint 1 end (STAM-22)
-      - name: Smoke check
+      - name: Health checks
         run: |
           curl -f http://localhost:8081/actuator/health
           curl -f http://localhost:8082/actuator/health
@@ -32,3 +33,46 @@ jobs:
       - name: Tear down
         if: always()
         run: cd compose-dev && docker compose down -v
+
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone frontend repo
+        uses: actions/checkout@v4
+        with:
+          repository: stampede-io/STAM-frontend
+          ref: Dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        run: npx playwright test --project=chromium --project=integration
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload traces and videos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: |
+            test-results/**/*.zip
+            test-results/**/*.webm
+            test-results/**/*.png
+          retention-days: 14
