@@ -1,0 +1,149 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit configuration for STAM-platform
+# Shared infra: compose-dev, config-repo, ADRs, load tests, Helm/Terraform (S3).
+language: en-US
+early_access: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "Dev"
+      - "main"
+
+  path_filters:
+    - "!**/target/**"
+    - "!**/node_modules/**"
+    - "!load-tests/results/*.json"
+    - "!load-tests/results/*.txt"
+
+  path_instructions:
+    - path: "compose-dev/docker-compose.yml"
+      instructions: >
+        This is the dev stack every other repo is tested against. RECURRING
+        DEFECT - .env drifting from .env.example has broken a sprint-end load
+        test and stopped notification-db from starting. Flag as a blocking
+        issue any service that references a ${VAR} not present in
+        .env.example, and any new required variable added here without the
+        matching .env.example entry in the same PR. Also flag: (1) a new
+        service without a healthcheck, or a depends_on without
+        condition: service_healthy - startup ordering here is already fragile;
+        (2) a host port that collides with an existing mapping (current map:
+        8080 kafka-ui, 8081 catalog, 8082 booking, 8083 payment, 8084
+        identity, 8085 gateway, 8086 notification, 8761 eureka, 8888 config,
+        1025/8025 mailhog, 6379 redis, 9092 kafka); (3) any real secret or
+        default password committed rather than referenced; (4) a new Kafka
+        topic created in kafka-init without a producer AND a consumer - the
+        notifications.requests topic is already orphaned this way; (5) build
+        contexts using ../../ paths - these resolve differently in CI than
+        locally and are the cause of the nightly workflow failure.
+
+    - path: "compose-dev/.env.example"
+      instructions: >
+        This is the committed redacted template. Flag any real credential,
+        API key, or Stripe key that has leaked in here rather than a
+        placeholder. Flag a variable removed here that is still referenced by
+        docker-compose.yml.
+
+    - path: ".github/workflows/nightly.yml"
+      instructions: >
+        KNOWN BROKEN - this workflow has failed every night since it landed,
+        for two independent reasons. (1) scripts/clone-all.sh clones into the
+        workspace root, but compose build contexts are ../../STAM-<svc>, which
+        resolves one level too high in CI - the error is "unable to prepare
+        context: path .../STAM-payment not found". (2) The Playwright job sets
+        CI=true globally, which makes playwright.config.ts skip its webServer,
+        and nothing else starts Vite, so every test fails with
+        ERR_CONNECTION_REFUSED. If a PR touches this file, check whether it
+        fixes those and flag a change that leaves them open. Also flag that
+        the smoke job only health-checks catalog (8081) and booking (8082)
+        while seven services now run - a smoke test that ignores five services
+        is not a smoke test.
+
+    - path: "docs/adr/**"
+      instructions: >
+        ADRs must be ORIGINAL first-person prose in Context / Decision /
+        Consequences format, with real alternatives weighed and honest
+        negatives. Flag text that reads as copied from a vendor page,
+        blueprint, or tutorial, and any ADR whose Consequences section lists
+        only positives. Flag an ADR that contradicts an existing accepted one
+        without superseding it explicitly. ADR-0004 is still Status: Proposed
+        with empty Decision and Consequences - flag any PR that removes Eureka
+        or Config Server without completing it in the same change. Do NOT
+        suggest rewriting accepted ADRs to match later code; the naming drift
+        between ADR-0002/0003 and the implementation is documented
+        deliberately in CLAUDE.md section 14.
+
+    - path: "load-tests/**"
+      instructions: >
+        k6 scripts and their published reports. The oversell check is a hard
+        PASS/FAIL gate - flag any change to a runner script that makes the DB
+        oversell assertion advisory, conditional, or removable. Flag threshold
+        values loosened to make a run pass; the correct response to a missed
+        threshold is analysis in the report, which is what the existing M1 and
+        M2 reports do. Flag any hardcoded credential or bearer token in a k6
+        script. Note k6 v2.2 removed k6/experimental/webcrypto and
+        digestSync - flag any reintroduction of those APIs.
+
+    - path: "config-repo/**"
+      instructions: >
+        Spring Cloud Config Server backing files. This whole mechanism is
+        temporary and is deleted in Sprint 3 per ADR-0004. Flag any
+        significant new investment here - config that will need migrating to
+        a ConfigMap in weeks should usually go straight to the service's own
+        application.yml as an env-var default instead. Flag any secret placed
+        in a config-repo file, since these are served unencrypted over HTTP.
+
+    - path: "charts/**"
+      instructions: >
+        Helm charts (Sprint 3). Flag hardcoded image tags rather than values,
+        missing resource requests/limits, containers running as root, secrets
+        as plain Secret manifests rather than SealedSecrets, and any chart
+        that assumes Eureka or Config Server still exist.
+
+    - path: "terraform/**"
+      instructions: >
+        Terraform for Azure VM + k3s (Sprint 3). Flag any credential or key in
+        a .tf file or committed .tfvars, state configured to a local backend,
+        and security groups or NSGs opening ports to 0.0.0.0/0.
+
+    - path: "scripts/**"
+      instructions: >
+        Flag scripts missing `set -e` (or `set -euo pipefail`), unquoted
+        variable expansions that break on paths with spaces - the development
+        machine's project path contains spaces and an em-dash - and any
+        assumption that the caller's working directory is the repo root.
+
+  tools:
+    gitleaks:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    actionlint:
+      enabled: true
+    hadolint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    checkov:
+      enabled: true
+    semgrep:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
