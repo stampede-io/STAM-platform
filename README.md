@@ -57,7 +57,7 @@ flowchart TB
     R["Redis 7<br/>TTL holds · cache · rate-limit buckets"]
     DB[("PostgreSQL 16 × 5<br/>one per service")]
 
-    SPA -. "BROKEN — see open bug<br/>proxy targets :8080 (Kafka UI)<br/>auth paths served by nothing" .-> GW
+    SPA -- "PKCE authorize -> identity<br/>/api/** -> gateway BFF (ADR-0005)" --> GW
     GW --> ID
     GW --> CAT
     GW --> BK
@@ -87,7 +87,7 @@ flowchart TB
 
 The gateway → service edges (`GW --> ID/CAT/BK/PAY`) are HTTP routing. Between the business services, every edge is Kafka — except **booking → catalog**, a synchronous OpenFeign call for seat validation behind a Resilience4j circuit breaker so a catalog outage degrades booking rather than taking it down (`CircuitBreakerIT`).
 
-> **The dashed SPA → gateway edge does not currently work.** The Vite dev proxy targets `:8080` (Kafka UI) instead of the gateway on `:8085`; the SPA's default auth paths `/api/v1/oauth2/*` are served by nothing and match no gateway route; and the frontend is not in `docker-compose.yml`, so the hop is never exercised. Playwright proves the SPA against mocks and k6 proves the gateway with hand-rolled JWTs — two verified halves with an unverified join. Tracked as an open bug; **read the M2 "full browser journey" claim with that caveat.**
+> **The SPA → gateway edge is proven (STAM-440).** A Playwright spec with no `page.route()` mocks drives the real SPA through the real gateway — PKCE login against identity's own form, a seat map from catalog, a hold through booking. The gateway's BFF token handler (ADR-0005) keeps the refresh token in an httpOnly cookie; the SPA holds only the access token. The frontend runs as its own service in `docker-compose.yml`.
 
 **Key invariants:**
 
