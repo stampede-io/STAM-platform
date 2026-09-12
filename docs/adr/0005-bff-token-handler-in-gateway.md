@@ -164,6 +164,26 @@ unrelated, unexplained one-line diffs scattered across three repos.
   token still sits in browser memory and an XSS payload could read it for its
   ~10-minute lifetime. STAM-77 remains the way to close that gap and is now
   explicitly a separate decision, not something to sleepwalk into.
+- `SameSite=Lax` means the cookie will not be sent on a cross-site fetch — it
+  only survives because everywhere the SPA runs today (`localhost:5173` via
+  the Vite/nginx proxy) is same-site with the gateway. `https://stampede.vercel.app`
+  is already in the gateway's CORS allow-list for a future deployment target;
+  the day the SPA is actually served from there against a gateway on a
+  different domain, `/api/v1/oauth2/refresh` will silently 401 on every call
+  because the browser won't attach the cookie cross-site. There's no fix that
+  doesn't cost something: `SameSite=None` needs `Secure` (HTTPS everywhere,
+  including local dev, which we don't have), and putting the SPA and gateway
+  on the same registrable domain sidesteps the question but isn't always an
+  option. Flagging now so it's a known trade-off when that deployment
+  actually happens, not a surprise 401 in front of an audience.
+- `logout` only drops the browser's cookie; it does not tell identity to
+  revoke the refresh token. A token exfiltrated before logout (compromised
+  proxy, malicious extension) keeps working until it's next replayed and
+  reuse-detection catches it — logout doesn't force that moment. Closing this
+  needs an explicit revocation endpoint on identity's side (there isn't one
+  today, only the reuse-triggered family revocation), which is an identity
+  change, not a gateway one — noted here so it isn't mistaken for an
+  oversight in `BffAuthController`.
 
 **When the full BFF (STAM-77) would win:** if we ever need to support truly
 untrusted SPA hosting, or the threat model puts a 10-minute access-token
