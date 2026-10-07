@@ -1,6 +1,11 @@
-# Default (local/kind) values. Override with -f values-staging.yaml or
-# -f values-prod.yaml (AC4) — those files only set what differs; anything
-# they don't mention falls back to what's here.
+# Default (local/kind) values. Override with -f values-staging.yaml,
+# -f values-prod.yaml, or -f values-demo.yaml — those files only set
+# what differs; anything they don't mention falls back to what's here.
+
+# STAM-60: gates the demo-reset CronJob (templates/demo/). Off by
+# default — only values-demo.yaml turns it on, alongside the per-service
+# DEMO_MODE/profile overrides that make it actually do something.
+demoMode: false
 
 # Each key below matches one dependency's name in Chart.yaml and is passed
 # straight through to that subchart's own values.yaml (same shape: image,
