@@ -67,3 +67,33 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+---
+# payment is the one service that talks to something outside this
+# cluster at all: Stripe test mode, over HTTPS (StripeConfig.java /
+# CLAUDE.md §5). Everything else above is cluster-internal; without this
+# rule, default-deny-all would silently break every real payment
+# authorization the moment these policies apply. ipBlock excludes the
+# private ranges a pod could otherwise reach on the same port — this
+# rule is for calling out to the internet, not to other pods in the
+# cluster or the node's own network.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payment-egress-internet
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: payment
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
