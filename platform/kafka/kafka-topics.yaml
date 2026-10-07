@@ -1,0 +1,130 @@
+# AC2: all 6 topics from CLAUDE.md §6's registry, plus their .dlq sibling
+# each. Partition counts match that table exactly; every .dlq gets 1 —
+# dead-letter volume is low by definition, no ordering/throughput need.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: reservations-events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: reservations.events
+  partitions: 6
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: reservations-events-dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: reservations.events.dlq
+  partitions: 1
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payments-commands
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: payments.commands
+  partitions: 3
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payments-commands-dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: payments.commands.dlq
+  partitions: 1
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payments-events
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: payments.events
+  partitions: 3
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: payments-events-dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: payments.events.dlq
+  partitions: 1
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: identity-audit
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: identity.audit
+  partitions: 3
+  replicas: 1
+  config:
+    # CLAUDE.md §6: audit log kept indefinitely.
+    retention.ms: "-1"
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: identity-audit-dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: identity.audit.dlq
+  partitions: 1
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: notifications-requests
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  # CLAUDE.md §6 / known issue #7: created but unused — notification
+  # listens directly on reservations.events. Kept here because this
+  # story's own AC2 lists it as one of the 6 topics that must exist;
+  # whether to wire it up or delete it is tracked separately, not this
+  # story's call to make.
+  topicName: notifications.requests
+  partitions: 3
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaTopic
+metadata:
+  name: notifications-requests-dlq
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  topicName: notifications.requests.dlq
+  partitions: 1
+  replicas: 1
