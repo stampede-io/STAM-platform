@@ -14,6 +14,8 @@
 > **Nightly E2E is currently red** — two known workflow bugs (compose build-context path and a missing dev server in CI), not product regressions. Tracked for Sprint 3.
 >
 > **Milestone 2 demo video:** *(link goes here after recording)*
+>
+> **Try it now** — no registration needed: `user@demo.local` / `Demo2026!` (or `organizer@demo.local` / `Demo2026!` for the organizer role). Demo data is synthetic, no real PII, reset nightly at 03:00 UTC. *(Live demo URL and exact availability hours go here once STAM-50's VM is provisioned — off-hours, the 3-min demo video above covers the same flow.)*
 
 ## The problem
 
@@ -160,6 +162,27 @@ open http://localhost:8025
 ```
 
 Force a compensation path by setting `PAYMENT_FAILURE_RATE=1.0` in `.env` and restarting payment — the saga will refund and release the seats instead of confirming.
+
+## Demo mode (STAM-60)
+
+The public demo deployment runs with `demoMode: true`
+(`platform/charts/stampede/values-demo.yaml`), which does two things:
+
+- Identity's `/login` page shows the demo credentials
+  (`user@demo.local` / `Demo2026!`, `organizer@demo.local` /
+  `Demo2026!`) instead of a blank login form.
+- A CronJob resets the data nightly at **03:00 UTC**: it truncates
+  every table in all five databases (schema untouched —
+  `flyway_schema_history` is explicitly excluded) and restarts
+  catalog/booking/identity, whose existing seed-on-boot logic
+  repopulates fresh demo data as part of coming back up.
+
+**Demo data is synthetic. No real PII. Reset nightly at 03:00 UTC.**
+
+This is deliberately *not* the default (`demoMode: false` in
+`values.yaml`) — it's a separate values file layered on only for the
+public-facing deployment, the same pattern `values-staging.yaml` and
+`values-prod.yaml` already use.
 
 ## Load testing
 
