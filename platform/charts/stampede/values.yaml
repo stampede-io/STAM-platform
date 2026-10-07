@@ -7,21 +7,47 @@
 # resources, probes, config, secretName — see each service's helm/values.yaml
 # for what's available to override).
 gateway: {}
+# DB_HOST/DB_NAME override each subchart's own kind-local default (a
+# per-service hostname like "catalog-db" and a bare DB name like "catalog")
+# to point at ADR-0006's single shared Postgres instance instead, under the
+# `<service>_db` name the init Job below creates. secretName is unchanged —
+# same Secret name, now pointed at a different database.
 identity:
   secretName: identity-db-secret
+  config:
+    DB_HOST: postgres
+    DB_NAME: identity_db
 catalog:
   secretName: catalog-db-secret
+  config:
+    DB_HOST: postgres
+    DB_NAME: catalog_db
 booking:
   secretName: booking-db-secret
+  config:
+    DB_HOST: postgres
+    DB_NAME: booking_db
 payment:
   secretName: payment-db-secret
+  config:
+    DB_HOST: postgres
+    DB_NAME: payment_db
 notification:
   secretName: notification-db-secret
+  config:
+    DB_HOST: postgres
+    DB_NAME: notification_db
 
 # Shared infra this umbrella chart owns directly (not published subcharts —
-# these aren't services with their own repo/CI). CLAUDE.md's architecture
-# invariant is five separate Postgres instances, one per DB-owning service,
-# not one shared database — gateway has none.
+# these aren't services with their own repo/CI).
+#
+# ADR-0006: one Postgres instance, five isolated databases with per-service
+# credentials, not five managed servers (docs/adr/0006-single-postgres-
+# five-databases.md). Database-per-service is an ownership boundary, kept
+# here by Postgres's own user/grant model — not a hardware boundary, which
+# would cost roughly 5x. compose-dev still runs five separate lightweight
+# Postgres containers (cost isn't a concern locally); this chart is the one
+# place that consolidates them.
 infra:
   kafka:
     enabled: true
@@ -29,10 +55,30 @@ infra:
   redis:
     enabled: true
     image: redis:7-alpine
-  databases:
-    - identity
-    - catalog
-    - booking
-    - payment
-    - notification
-  postgresImage: postgres:16-alpine
+    storage: 8Gi
+  postgres:
+    image: postgres:16-alpine
+    storage: 64Gi
+    adminUser: postgres
+    adminPassword: "changeme-admin" # kind/local only — Sealed Secrets lands in STMP-45
+    databases:
+      - service: identity
+        db: identity_db
+        user: identity_user
+        password: "changeme"
+      - service: catalog
+        db: catalog_db
+        user: catalog_user
+        password: "changeme"
+      - service: booking
+        db: booking_db
+        user: booking_user
+        password: "changeme"
+      - service: payment
+        db: payment_db
+        user: payment_user
+        password: "changeme"
+      - service: notification
+        db: notification_db
+        user: notification_user
+        password: "changeme"

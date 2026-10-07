@@ -1,70 +1,85 @@
 {{- /*
-One Postgres instance per DB-owning service — CLAUDE.md's invariant is five
-separate databases, never one shared instance. Each is named "<db>-db" to
-match that service's own subchart default (DB_HOST: "<service>-db" in
-STAM-<service>/helm/values.yaml) without any override needed.
+ADR-0006: one Postgres instance, five isolated databases with per-service
+credentials — not five managed servers. Database-per-service is an
+ownership boundary, not a hardware boundary; see docs/adr/0006-*.md.
 */ -}}
-{{- range .Values.infra.databases }}
----
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ . }}-db-secret
+  name: postgres-admin-secret
 type: Opaque
 stringData:
-  DB_USERNAME: {{ . | quote }}
-  DB_PASSWORD: "changeme" # kind/local only — Sealed Secrets lands in STMP-45
+  POSTGRES_USER: {{ .Values.infra.postgres.adminUser | quote }}
+  POSTGRES_PASSWORD: {{ .Values.infra.postgres.adminPassword | quote }}
 ---
-apiVersion: apps/v1
-kind: Deployment
+{{- range .Values.infra.postgres.databases }}
+apiVersion: v1
+kind: Secret
 metadata:
-  name: {{ . }}-db
+  name: {{ .service }}-db-secret
+type: Opaque
+stringData:
+  DB_USERNAME: {{ .user | quote }}
+  DB_PASSWORD: {{ .password | quote }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
 spec:
+  serviceName: postgres
   replicas: 1
   selector:
     matchLabels:
-      app: {{ . }}-db
+      app: postgres
   template:
     metadata:
       labels:
-        app: {{ . }}-db
+        app: postgres
     spec:
       containers:
         - name: postgres
-          image: {{ $.Values.infra.postgresImage }}
+          image: {{ .Values.infra.postgres.image }}
           ports:
             - containerPort: 5432
           env:
-            - name: POSTGRES_DB
-              value: {{ . | quote }}
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ . }}-db-secret
-                  key: DB_USERNAME
+                  name: postgres-admin-secret
+                  key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ . }}-db-secret
-                  key: DB_PASSWORD
+                  name: postgres-admin-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
-      volumes:
-        # ponytail: emptyDir, not a PVC. Fine for kind/staging smoke-testing;
-        # prod needs real persistence before this chart is prod-ready for
-        # anything stateful — tracked as a gap, not fixed here.
-        - name: data
-          emptyDir: {}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.infra.postgres.adminUser }}"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.infra.postgres.storage }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ . }}-db
+  name: postgres
 spec:
   selector:
-    app: {{ . }}-db
+    app: postgres
   ports:
     - port: 5432
       targetPort: 5432
-{{- end }}

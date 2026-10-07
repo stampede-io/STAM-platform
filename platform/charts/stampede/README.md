@@ -1,9 +1,12 @@
 # stampede — platform umbrella chart
 
 One Helm install deploys the whole platform: all 6 services plus the shared
-infra none of them own individually (Kafka, Redis, and — per
-CLAUDE.md's five-separate-databases invariant — one Postgres instance per
-DB-owning service).
+infra none of them own individually — Kafka, Redis, and, per
+[ADR-0006](../../docs/adr/0006-single-postgres-five-databases.md), **one**
+Postgres instance hosting five isolated databases (one per DB-owning
+service, each with its own non-superuser role) rather than five managed
+servers. compose-dev still runs five separate Postgres containers — that
+decision is scoped to this chart's Kubernetes deployment only.
 
 ## How a service's chart gets here
 
@@ -36,20 +39,30 @@ helm install stampede . -f values-staging.yaml       # staging overrides
 helm install stampede . -f values-prod.yaml           # prod overrides (AC4)
 
 helm test stampede                         # AC6 — curls gateway's own health endpoint
+./verify-db-isolation.sh                   # AC2 — each service's role can reach only its own DB
 ```
 
-`values.yaml`'s defaults target a throwaway cluster (kind, or staging without
-the overrides file): one replica each, `emptyDir` Postgres volumes, no
-persistence. `values-prod.yaml` bumps replicas and resources and pins real
-image tags — never `latest` (CLAUDE.md §10).
+`values.yaml`'s defaults target a throwaway cluster (kind, or staging
+without the overrides file): one replica per service. `values-prod.yaml`
+bumps replicas and resources and pins real image tags — never `latest`
+(CLAUDE.md §10).
+
+Postgres is a single-replica `StatefulSet` with a 64Gi PVC (AC1); a
+post-install Helm hook Job creates the five databases, five roles, and the
+grants/revokes that enforce AC2's isolation — it only runs on first
+install, not every upgrade. Redis also has a PVC (AC3) with
+`--appendonly yes`, deployed as a `Deployment` with `strategy: Recreate`
+rather than a `StatefulSet`, since a single `ReadWriteOnce`-backed replica
+doesn't need stable per-pod identity, just a volume that doesn't try to
+double-mount during a rolling update.
 
 ## What this chart does NOT do yet
 
 - **Secrets** are plain `Secret` resources this chart creates directly with
-  placeholder dev credentials (`changeme`) for each database. Sealed Secrets
-  lands in STMP-45 — until then, this is explicitly not production-safe, and
-  `values-prod.yaml` doesn't pretend otherwise.
-- **Persistence**: every Postgres uses an `emptyDir` volume. Fine for a
-  kind/staging smoke test, loses all data on pod restart — a real PVC is a
-  prerequisite for using this chart against anything that needs to keep
-  data, prod included.
+  placeholder dev credentials (`changeme`) for Postgres's admin role and
+  every per-service role. Sealed Secrets lands in STMP-45 — until then, this
+  is explicitly not production-safe, and `values-prod.yaml` doesn't pretend
+  otherwise.
+- **Postgres HA**: single replica, no failover — see ADR-0006's
+  Consequences for why that's an accepted trade-off at this project's scale
+  and wouldn't be at a larger one.
