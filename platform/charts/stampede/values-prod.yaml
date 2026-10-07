@@ -1,0 +1,72 @@
+# Overrides for prod — only what differs from values.yaml's defaults.
+# Usage: helm install stampede ./charts/stampede -f values-prod.yaml
+#
+# Image tags intentionally pinned to a real released version, never
+# "latest" (CLAUDE.md §10's tagging rule) — bump these on every release,
+# which is exactly the version-drift AC8 guards against on the service
+# side (helm/Chart.yaml's appVersion must already match this at publish time).
+
+gateway:
+  replicaCount: 3
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 896Mi
+
+identity:
+  replicaCount: 2
+  secretName: identity-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 896Mi
+
+catalog:
+  replicaCount: 3
+  secretName: catalog-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 896Mi
+
+booking:
+  replicaCount: 3
+  secretName: booking-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 768Mi
+    limits:
+      memory: 1280Mi
+
+payment:
+  replicaCount: 2
+  secretName: payment-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 896Mi
+
+notification:
+  replicaCount: 2
+  secretName: notification-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"

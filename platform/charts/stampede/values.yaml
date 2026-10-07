@@ -1,0 +1,38 @@
+# Default (local/kind) values. Override with -f values-staging.yaml or
+# -f values-prod.yaml (AC4) — those files only set what differs; anything
+# they don't mention falls back to what's here.
+
+# Each key below matches one dependency's name in Chart.yaml and is passed
+# straight through to that subchart's own values.yaml (same shape: image,
+# resources, probes, config, secretName — see each service's helm/values.yaml
+# for what's available to override).
+gateway: {}
+identity:
+  secretName: identity-db-secret
+catalog:
+  secretName: catalog-db-secret
+booking:
+  secretName: booking-db-secret
+payment:
+  secretName: payment-db-secret
+notification:
+  secretName: notification-db-secret
+
+# Shared infra this umbrella chart owns directly (not published subcharts —
+# these aren't services with their own repo/CI). CLAUDE.md's architecture
+# invariant is five separate Postgres instances, one per DB-owning service,
+# not one shared database — gateway has none.
+infra:
+  kafka:
+    enabled: true
+    image: apache/kafka:3.8.0
+  redis:
+    enabled: true
+    image: redis:7-alpine
+  databases:
+    - identity
+    - catalog
+    - booking
+    - payment
+    - notification
+  postgresImage: postgres:16-alpine
