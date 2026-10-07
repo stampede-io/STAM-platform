@@ -117,7 +117,7 @@ curl http://localhost:8083/actuator/health   # payment
 curl http://localhost:8086/actuator/health   # notification
 ```
 
-Kafka UI: `http://localhost:8080` · Mailhog inbox: `http://localhost:8025` · Eureka: `http://localhost:8761`
+Kafka UI: `http://localhost:8080` · Mailhog inbox: `http://localhost:8025`
 
 ## Try it
 
@@ -176,7 +176,8 @@ Rate-limit burst test: [`load-tests/rate-limit-burst.js`](load-tests/rate-limit-
 | [0001](docs/adr/0001-microservices-over-modular-monolith.md) | Microservices over modular monolith | Accepted |
 | [0002](docs/adr/0002-orchestrated-saga-over-choreography.md) | Orchestrated saga (state machine in booking) over choreography | Accepted |
 | [0003](docs/adr/0003-kafka-over-rabbitmq-and-sqs.md)         | Kafka as the event backbone (replayable log, per-partition ordering) | Accepted |
-| [0004](docs/adr/0004-k8s-dns-over-eureka.md)                 | K8s DNS instead of Eureka | Proposed — completed in Sprint 3 |
+| [0004](docs/adr/0004-k8s-dns-over-eureka.md)                 | K8s DNS instead of Eureka | Accepted |
+| [0005](docs/adr/0005-bff-token-handler-in-gateway.md)        | BFF token handler in the gateway | Accepted |
 
 ## Repository layout (polyrepo)
 
@@ -212,7 +213,7 @@ Test coverage is two separate layers today: 38 Playwright E2E specs exercise the
 
 **Milestone 1 (tag: `v0.1.0`) — complete.** Compose-based deploy, catalog + booking + payment + Kafka + Redis + Postgres. Full hold → pay → confirm saga with compensation and crash recovery.
 
-**In progress — Sprint 3 (`v0.3.0`):** Kubernetes-native deployment — raw manifests on kind, Terraform for Azure VM + k3s, Helm umbrella chart, shared Postgres and Redis on cluster, Sealed Secrets, ArgoCD app-of-apps. Eureka and Config Server get deleted, fulfilling ADR-0004.
+**In progress — Sprint 3 (`v0.3.0`):** Kubernetes-native deployment — raw manifests on kind, Terraform for Azure VM + k3s, Helm umbrella chart, shared Postgres and Redis on cluster, Sealed Secrets, ArgoCD app-of-apps. Eureka and Config Server are deleted (STAM-56), fulfilling ADR-0004.
 
 ## License
 
