@@ -184,6 +184,49 @@ This is deliberately *not* the default (`demoMode: false` in
 public-facing deployment, the same pattern `values-staging.yaml` and
 `values-prod.yaml` already use.
 
+## Promotion workflow (STAM-62)
+
+Deployment is git-driven end to end (ArgoCD, STAM-61) — the only thing
+that differs between staging and prod is who commits the change.
+
+**Staging — automated, one bump per service.** Every merge to a
+service's own `main` runs that service's CI (the shared
+`service-ci.yml`), which, after pushing the image to GHCR, opens a PR
+*against this repo* updating only that service's `image.tag` in
+`values-staging.yaml`. Merging that PR is the only human action —
+ArgoCD's `stampede-staging` Application (`syncPolicy.automated`) picks
+it up within ~3 minutes on its own. The other five services' tags are
+untouched by that PR; six services merging independently never queue
+behind each other.
+
+Note this targets `values-staging.yaml` in *this* repo, not a
+per-service file in `STAM-gitops` — that's what `stampede-staging`'s
+Application actually reads (STAM-61's app-of-apps points at
+`platform/charts/stampede -f values-staging.yaml`), so this is where a
+bump has to land to mean anything. Same per-environment-not-per-service
+adaptation STAM-61 already documented, applied consistently here.
+
+**Prod — always a human PR, never automated.** Promoting a tag that's
+been verified in staging means a person opens a PR here by hand
+(`.github/PULL_REQUEST_TEMPLATE/prod-promotion.md`) copying that
+`image.tag` into `values-prod.yaml` — a real released version, never a
+bare commit SHA (CLAUDE.md §10's tagging rule, enforced by AC8's
+version-drift gate at publish time). Merging it still doesn't deploy
+anything: `stampede-prod` has no `syncPolicy.automated`, so it shows
+`OutOfSync` until that same person runs `argocd app sync stampede-prod`
+or clicks Sync in the UI. Two separate, deliberate actions — not one.
+
+**The one piece this repo can't set up by itself:** each of the 6
+service repos' CI needs a fine-grained GitHub PAT, scoped to this repo
+only (`contents: write`, `pull-requests: write`, no broader access),
+stored as that repo's own `GITOPS_PAT` secret — never a shared token in
+one central place (AC5). Creating that PAT is a GitHub account action;
+it has to be done by hand, once per service repo, by whoever
+administers the `stampede-io` org.
+
+See `docs/gitops.md` (STAM-gitops) for how a merge turns into a running
+pod end to end.
+
 ## Load testing
 
 ```bash
