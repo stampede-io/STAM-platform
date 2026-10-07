@@ -50,7 +50,7 @@ fail=0
 for dir in "${DIRS[@]}"; do
   [ -d "$dir" ] || continue
   while IFS= read -r -d '' file; do
-    grep -q '^kind: Secret' "$file" 2>/dev/null || continue
+    grep -q '^kind: Secret$' "$file" 2>/dev/null || continue
     rel="$(realpath --relative-to="$REPO_ROOT" "$file")"
     allowed=false
     for allow in "${ALLOWED_DIRS[@]}"; do
@@ -64,7 +64,7 @@ for dir in "${DIRS[@]}"; do
       echo "FAIL: $rel defines a plain Secret outside the documented kind-local allowlist"
       fail=1
     fi
-  done < <(find "$dir" -name '*.yaml' -print0 2>/dev/null)
+  done < <(find "$dir" \( -name '*.yaml' -o -name '*.yml' \) -print0 2>/dev/null)
 done
 
 exit $fail
