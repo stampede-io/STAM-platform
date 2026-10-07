@@ -1,0 +1,55 @@
+# Bugfix found while building STAM-60's demo-reset CronJob, verified
+# live: services-egress-postgres/services-egress-redis (STAM-58) only
+# declare the EGRESS side, on the calling services. NetworkPolicy
+# requires BOTH sides to agree — the caller's egress rule AND the
+# callee's ingress rule — and default-deny-all's `Ingress` policyType
+# covers postgres/redis too, same as every other pod in this namespace.
+# Without this file, nothing could reach Postgres or Redis at all once
+# these policies applied, despite the egress rules existing: verified
+# live with a real Postgres pod — a psql connection from a correctly
+# egress-allowed pod hung until this ingress rule existed, then
+# succeeded immediately.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [identity, catalog, booking, payment, notification]
+        - podSelector:
+            matchLabels:
+              app: demo-reset
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [catalog, booking, gateway]
+      ports:
+        - protocol: TCP
+          port: 6379
