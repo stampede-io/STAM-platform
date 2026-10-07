@@ -194,6 +194,58 @@ Each service is its own git repo under the [`stampede-io`](https://github.com/st
 | **STAM-platform** *(this repo)* | Compose dev env, config repo, ADRs, load tests, Helm/Terraform (Sprint 3), nightly e2e |
 | [STAM-gitops](https://github.com/stampede-io/STAM-gitops) | ArgoCD source of truth — app-of-apps, staging/prod manifests (Sprint 3) |
 
+## Infrastructure (Sprint 3)
+
+### Local kind cluster
+
+`platform/kind/` + each service's own `k8s-local/` manifests — see
+[`platform/docs/k8s-local.md`](platform/docs/k8s-local.md). Zero cost,
+zero cloud dependency, the default day-to-day target while learning
+Kubernetes fundamentals.
+
+### Azure VM + k3s (`platform/terraform/`)
+
+Provisions a single-node k3s cluster on a real Azure VM. **This costs real
+money the moment `terraform apply` runs** — a `Standard_B2ms` VM plus a
+64GB SSD plus a storage account, running continuously until
+`terraform destroy`. Nothing here should be applied without deciding that
+spend is worth it for what you're testing that day.
+
+**State**: remote, in Azure Storage, not local `.tfstate` files — so the
+state the kind cluster above never needed now has to be shared safely
+across whoever (or whatever CI) runs `terraform apply`/`destroy` against
+this, and the azurerm backend's blob lease gives that locking for free.
+One-time setup, before the first `terraform init` ever runs:
+
+```bash
+cd platform/terraform/bootstrap
+LOCATION=eastus ./bootstrap-state.sh
+```
+
+This prints the `-backend-config` flags `terraform init` needs (storage
+account name is randomly generated — save it, every teammate needs the
+same three values). The state storage account itself can't be *in* the
+state it holds — chicken-and-egg — so this step is a plain `az` script,
+not Terraform, and it's the one piece of this infra that `terraform
+destroy` (below) does not and should not touch.
+
+```bash
+cd platform/terraform
+cp terraform.tfvars.example terraform.tfvars   # fill in operator_ip, etc.
+terraform init -backend-config=...             # the three values above
+terraform apply -auto-approve                  # real Azure spend starts here
+terraform output                               # vm_public_ip, kubeconfig_path, ssh_command
+terraform destroy -auto-approve                # tears down rg-stampede entirely; state storage survives
+```
+
+### Resource teardown discipline
+
+Don't leave `vm-stampede` running between sessions. Verify with:
+
+```bash
+az resource list --resource-group rg-stampede --output table   # should be empty after destroy
+```
+
 ## Observability
 
 Every log line is structured JSON. A `correlationId` MDC field, minted at the gateway, threads a single business transaction through every service and rides on `EventEnvelope.correlationId` through Kafka:

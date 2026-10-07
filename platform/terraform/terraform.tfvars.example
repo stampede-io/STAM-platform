@@ -1,0 +1,5 @@
+# Copy to terraform.tfvars (gitignored) and fill in your own values.
+location            = "eastus"
+operator_ip         = "203.0.113.42/32" # curl -s https://api.ipify.org, then /32
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+admin_username      = "stampede"

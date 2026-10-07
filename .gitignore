@@ -1,2 +1,9 @@
 .env
 *.env.local
+
+# Terraform
+platform/terraform/.terraform/
+platform/terraform/*.tfstate
+platform/terraform/*.tfstate.*
+platform/terraform/terraform.tfvars
+platform/terraform/kubeconfig
