@@ -119,6 +119,16 @@ curl http://localhost:8086/actuator/health   # notification
 
 Kafka UI: `http://localhost:8080` · Mailhog inbox: `http://localhost:8025` · Eureka: `http://localhost:8761`
 
+## Contributing
+
+Working on the Kubernetes track (`platform/`, Sprint 3)? You'll need
+`kubeseal` to add or change any secret the cluster uses — plaintext
+credentials never go into git here, only `SealedSecret` ciphertext.
+Install/usage instructions, including which protocol version to match
+to the controller: [`platform/sealed-secrets/README.md`](platform/sealed-secrets/README.md).
+Rotating the controller's own key is covered separately in
+[`docs/runbook.md`](docs/runbook.md#sealed-secrets-key-rotation-stam-57).
+
 ## Try it
 
 Hold a seat, pay, confirm. These hit services directly, which skips auth — going through the gateway on `:8085` requires a bearer token from the PKCE flow.
