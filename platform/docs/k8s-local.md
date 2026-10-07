@@ -30,16 +30,27 @@ kind load docker-image booking:local --name stampede
 
 ## 3. Apply manifests
 
-Kafka first — it's shared cluster infra (both services need a resolvable
-`kafka:9092`), so it lives in `platform/kind/` alongside the kind config, not
-in either service's own repo:
+Kafka and Redis first — both are shared cluster infra (every service needs a
+resolvable `kafka:9092` and `redis:6379`), so they live in `platform/kind/`
+alongside the kind config, not in either service's own repo:
 
 ```bash
 kubectl apply -f STAM-platform/platform/kind/kafka.yaml
+kubectl apply -f STAM-platform/platform/kind/redis.yaml
 kubectl -n stampede wait --for=condition=Available deploy/kafka --timeout=90s
+kubectl -n stampede wait --for=condition=Available deploy/redis --timeout=60s
 ```
 
-This also creates the `stampede` namespace. Then each service's own
+Kafka is a hard requirement — Spring Kafka fails `ApplicationContext`
+startup outright on an unresolvable bootstrap address, so a missing Kafka
+crash-loops the pod immediately. Redis is a soft one by comparison: nothing
+in the readiness/liveness/startup probe groups touches it, so a missing
+Redis won't stop the pod reporting Ready — it'll just throw
+`RedisConnectionException` the first time a real request hits catalog's
+availability cache or booking's `HoldMirrorService`. Deploy it anyway; don't
+rely on the pod being Ready as proof the service actually works end to end.
+
+`kafka.yaml` creates the `stampede` namespace. Then each service's own
 manifests, from that service's own repo, under `<service>/k8s-local/`:
 
 ```bash
@@ -73,9 +84,12 @@ is too tight — `OutOfMemoryError: Metaspace` either crashes the app at
 startup (observed on booking, loading Kafka client classes while building the
 consumer) or surfaces later under request traffic (observed on catalog, after
 it had already passed its probes once). Both Deployments override
-`JAVA_TOOL_OPTIONS` to `-Xmx256m -XX:MaxMetaspaceSize=224m` for the kind-local
-profile — see the `env:` block in each `deployment.yaml`. This is a kind-local
-tuning fix only; it doesn't touch the shared Dockerfile default.
+`JAVA_TOOL_OPTIONS` to `-Xmx192m -XX:MaxMetaspaceSize=224m` for the kind-local
+profile — see the `env:` block in each `deployment.yaml`. Heap is trimmed
+below the image's own default (256m) to leave headroom above heap+metaspace
+within the fixed 640Mi container limit for thread stacks, JIT code cache, and
+Kafka/Netty's off-heap direct buffers. This is a kind-local tuning fix only;
+it doesn't touch the shared Dockerfile default.
 
 ## 4. Probes (AC2) and resources (AC3)
 
