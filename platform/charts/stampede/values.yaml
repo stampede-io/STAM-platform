@@ -1,11 +1,26 @@
-# Default (local/kind) values. Override with -f values-staging.yaml or
-# -f values-prod.yaml (AC4) — those files only set what differs; anything
-# they don't mention falls back to what's here.
+# Default (local/kind) values. Override with -f values-staging.yaml,
+# -f values-prod.yaml, or -f values-demo.yaml — those files only set
+# what differs; anything they don't mention falls back to what's here.
+
+# STAM-60: gates the demo-reset CronJob (templates/demo/). Off by
+# default — only values-demo.yaml turns it on, alongside the per-service
+# DEMO_MODE/profile overrides that make it actually do something.
+demoMode: false
 
 # Each key below matches one dependency's name in Chart.yaml and is passed
 # straight through to that subchart's own values.yaml (same shape: image,
 # resources, probes, config, secretName — see each service's helm/values.yaml
 # for what's available to override).
+#
+# KAFKA_BOOTSTRAP_SERVERS overrides every service's own same-namespace
+# default ("kafka:9092") to the cross-namespace FQDN of the bootstrap
+# Service Strimzi creates (ADR-0007) — Kafka itself is deliberately NOT
+# deployed by this chart, see platform/kafka/README.md. The short name
+# "kafka:9092" would resolve inside this chart's own namespace, which has
+# no Service by that name anymore now that Strimzi owns it in its own
+# `kafka` namespace.
+kafkaBootstrap: &kafkaBootstrap "stampede-kafka-bootstrap.kafka.svc.cluster.local:9092"
+# gateway doesn't use Kafka — no override needed here.
 gateway: {}
 # DB_HOST/DB_NAME override each subchart's own kind-local default (a
 # per-service hostname like "catalog-db" and a bare DB name like "catalog")
@@ -17,26 +32,31 @@ identity:
   config:
     DB_HOST: postgres
     DB_NAME: identity_db
+    KAFKA_BOOTSTRAP_SERVERS: *kafkaBootstrap
 catalog:
   secretName: catalog-db-secret
   config:
     DB_HOST: postgres
     DB_NAME: catalog_db
+    KAFKA_BOOTSTRAP_SERVERS: *kafkaBootstrap
 booking:
   secretName: booking-db-secret
   config:
     DB_HOST: postgres
     DB_NAME: booking_db
+    KAFKA_BOOTSTRAP_SERVERS: *kafkaBootstrap
 payment:
   secretName: payment-db-secret
   config:
     DB_HOST: postgres
     DB_NAME: payment_db
+    KAFKA_BOOTSTRAP_SERVERS: *kafkaBootstrap
 notification:
   secretName: notification-db-secret
   config:
     DB_HOST: postgres
     DB_NAME: notification_db
+    KAFKA_BOOTSTRAP_SERVERS: *kafkaBootstrap
 
 # Shared infra this umbrella chart owns directly (not published subcharts —
 # these aren't services with their own repo/CI).
@@ -49,9 +69,8 @@ notification:
 # Postgres containers (cost isn't a concern locally); this chart is the one
 # place that consolidates them.
 infra:
-  kafka:
-    enabled: true
-    image: apache/kafka:3.8.0
+  # Kafka is NOT here — ADR-0007 moves it to the Strimzi operator, installed
+  # and lifecycle-managed separately from this chart (platform/kafka/).
   redis:
     enabled: true
     image: redis:7-alpine

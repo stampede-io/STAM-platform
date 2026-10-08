@@ -1,0 +1,57 @@
+# STMP-41 / ADR-0007: single-broker KRaft Kafka via the Strimzi operator.
+# Install the operator first (separately, cluster-scoped, outside any app
+# release's lifecycle — see README.md):
+#   helm repo add strimzi https://strimzi.io/charts/
+#   helm install strimzi-operator strimzi/strimzi-kafka-operator -n kafka --create-namespace
+# Then apply this file and kafka-topics.yaml.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: broker
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: stampede
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    size: 20Gi
+    deleteClaim: false
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: stampede
+  namespace: kafka
+  annotations:
+    strimzi.io/node-pools: enabled
+    strimzi.io/kraft: enabled
+spec:
+  kafka:
+    version: 4.3.1
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+    config:
+      # Single broker, honest about it — see ADR-0007. RF=3 is what a real
+      # multi-broker deployment would use; RF=1 here would just be lying
+      # about redundancy a one-node cluster cannot provide.
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+    metricsConfig:
+      type: jmxPrometheusExporter
+      valueFrom:
+        configMapKeyRef:
+          name: kafka-metrics-config
+          key: kafka-metrics-config.yaml
+  entityOperator:
+    topicOperator: {}
+    userOperator: {}

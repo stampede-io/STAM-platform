@@ -1,0 +1,36 @@
+# STAM-58 / AC1(3), read literally: "each service can only reach its own
+# DB." What actually exists per ADR-0006 (STAM-52) is one Postgres
+# instance serving five databases — a deliberate choice over five
+# separate instances, to avoid paying 5x for hardware isolation nothing
+# here needs. That means there is exactly one Postgres Service/pod in
+# this namespace, and network policy cannot express "own DB only" any
+# finer than "this Postgres Service" without un-doing STAM-52's design.
+#
+# What this policy actually gives you: every backend service may reach
+# the shared Postgres pod and nothing else gets to (no other pod in the
+# namespace has this rule). The *per-service* isolation AC1(3) is really
+# after — catalog's user can't touch booking's rows — is enforced one
+# layer down, by Postgres itself: a dedicated DB user per service plus
+# `REVOKE ALL ON DATABASE ... FROM PUBLIC` (postgres-init-job.yaml). That
+# boundary is real; it's just a SQL boundary, not a network one, because
+# the thing it's protecting is behind a single Service either way.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: services-egress-postgres
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [identity, catalog, booking, payment, notification]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432

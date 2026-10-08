@@ -1,12 +1,20 @@
 # stampede — platform umbrella chart
 
-One Helm install deploys the whole platform: all 6 services plus the shared
-infra none of them own individually — Kafka, Redis, and, per
+One Helm install deploys all 6 services plus the shared data-layer infra
+none of them own individually: Redis, and, per
 [ADR-0006](../../docs/adr/0006-single-postgres-five-databases.md), **one**
 Postgres instance hosting five isolated databases (one per DB-owning
 service, each with its own non-superuser role) rather than five managed
 servers. compose-dev still runs five separate Postgres containers — that
 decision is scoped to this chart's Kubernetes deployment only.
+
+**Kafka is deliberately not part of this chart.** Per
+[ADR-0007](../../docs/adr/0007-strimzi-single-broker-kraft.md), it's
+managed by the Strimzi operator, installed once per cluster and
+lifecycle-independent of any `stampede` release — see
+[`platform/kafka/README.md`](../../kafka/README.md). Every service's
+`KAFKA_BOOTSTRAP_SERVERS` is overridden here, in `values.yaml`, to that
+cluster's cross-namespace bootstrap address.
 
 ## How a service's chart gets here
 
@@ -27,6 +35,11 @@ the polyrepo move for Helm specifically: nothing here needs that service's
 source checked out.
 
 ## Using it
+
+Kafka first — see [`platform/kafka/README.md`](../../kafka/README.md); the
+5 services that need it will crash-loop on an unresolvable bootstrap
+address otherwise (the same failure mode STAM-49 hit before Kafka existed
+anywhere in-cluster). Then:
 
 ```bash
 cd platform/charts/stampede
