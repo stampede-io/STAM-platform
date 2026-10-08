@@ -1,0 +1,31 @@
+{{- /*
+STAM-65 / AC2: one ServiceMonitor per service so Prometheus actually
+discovers /actuator/prometheus on each — STAM-65's own PR verified the
+scrape mechanism live but never shipped these for the real services,
+only a scratch one for testing. Needed now for real, not just to close
+that gap: STAM-63's canary AnalysisTemplate queries by
+rollouts_pod_template_hash, a metric *label* — and Prometheus never
+puts pod labels on scraped series unless a relabeling rule says so.
+The `release: prometheus` label is what kube-prometheus-stack's own
+Prometheus CR watches for (its serviceMonitorSelector).
+*/ -}}
+{{- range $service := list "gateway" "identity" "catalog" "booking" "payment" "notification" }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $service }}
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $service }}
+  endpoints:
+    - targetPort: 8080
+      path: /actuator/prometheus
+      interval: 15s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash]
+          targetLabel: rollouts_pod_template_hash
+---
+{{- end }}
