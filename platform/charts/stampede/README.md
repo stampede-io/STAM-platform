@@ -69,6 +69,25 @@ rather than a `StatefulSet`, since a single `ReadWriteOnce`-backed replica
 doesn't need stable per-pod identity, just a volume that doesn't try to
 double-mount during a rolling update.
 
+## Observability (STAM-63)
+
+`templates/observability/servicemonitors.yaml` ships one Prometheus Operator
+`ServiceMonitor` per service, labeled `release: prometheus` and relabeling
+each pod's `rollouts-pod-template-hash` label onto the scraped series as
+`rollouts_pod_template_hash` — this is what booking's and payment's canary
+`AnalysisTemplate`s (STAM-382, in their own repos) query by. Two assumptions
+this chart doesn't enforce and will fail silently if violated:
+
+- kube-prometheus-stack's Prometheus CR must be installed with a Helm
+  release named `prometheus` (the `release:` label kube-prometheus-stack's
+  own `serviceMonitorSelector` matches on) and either
+  `serviceMonitorNamespaceSelector: {}` (all namespaces) or this chart's
+  namespace explicitly included — Prometheus Operator's default is
+  same-namespace-only, which silently drops these ServiceMonitors with no
+  error anywhere if kube-prometheus-stack was installed more restrictively.
+- Every service's actuator port is `8080` (CLAUDE.md §8); if a service ever
+  diverges, its `targetPort: 8080` entry here needs updating too.
+
 ## What this chart does NOT do yet
 
 - **Secrets** are plain `Secret` resources this chart creates directly with

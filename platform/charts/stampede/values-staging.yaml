@@ -28,7 +28,11 @@ booking:
   image:
     tag: ""
 payment:
-  replicaCount: 1
+  # code-review (STAM-63): bumped from 1 -> 2 to match booking. Argo
+  # Rollouts has no trafficRouting provider here, so setWeight is only
+  # approximated by canary:stable replica ratio; at 1 replica the "canary"
+  # step instantly gets ~100% of traffic instead of 10%.
+  replicaCount: 2
   secretName: payment-db-secret
   image:
     tag: ""
