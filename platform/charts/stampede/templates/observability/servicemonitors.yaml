@@ -7,7 +7,10 @@ that gap: STAM-63's canary AnalysisTemplate queries by
 rollouts_pod_template_hash, a metric *label* — and Prometheus never
 puts pod labels on scraped series unless a relabeling rule says so.
 The `release: prometheus` label is what kube-prometheus-stack's own
-Prometheus CR watches for (its serviceMonitorSelector).
+Prometheus CR watches for (its serviceMonitorSelector) — it must match the
+Helm release name kube-prometheus-stack was installed under. Also assumes
+Prometheus's serviceMonitorNamespaceSelector allows this chart's namespace
+(Operator default is same-namespace-only); see this chart's README.
 */ -}}
 {{- range $service := list "gateway" "identity" "catalog" "booking" "payment" "notification" }}
 apiVersion: monitoring.coreos.com/v1
