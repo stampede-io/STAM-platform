@@ -1,0 +1,43 @@
+# Overrides for staging — only what differs from values.yaml's defaults.
+# Usage: helm install stampede ./charts/stampede -f values-staging.yaml
+
+# image.tag on each service below: empty means "fall back to the
+# subchart's own Chart.AppVersion default" (a pom.xml version, e.g.
+# 0.0.1-SNAPSHOT) — which was never actually what CI pushes to GHCR.
+# service-ci.yml tags images by commit SHA only (STAM-51), so until
+# STAM-62's bump automation fills these in with a real SHA on every
+# merge to that service's main, staging would otherwise be pulling an
+# image tag nothing ever published.
+gateway:
+  replicaCount: 2
+  image:
+    tag: ""
+identity:
+  replicaCount: 2
+  secretName: identity-db-secret
+  image:
+    tag: ""
+catalog:
+  replicaCount: 2
+  secretName: catalog-db-secret
+  image:
+    tag: ""
+booking:
+  replicaCount: 2
+  secretName: booking-db-secret
+  image:
+    tag: ""
+payment:
+  # code-review (STAM-63): bumped from 1 -> 2 to match booking. Argo
+  # Rollouts has no trafficRouting provider here, so setWeight is only
+  # approximated by canary:stable replica ratio; at 1 replica the "canary"
+  # step instantly gets ~100% of traffic instead of 10%.
+  replicaCount: 2
+  secretName: payment-db-secret
+  image:
+    tag: ""
+notification:
+  replicaCount: 1
+  secretName: notification-db-secret
+  image:
+    tag: ""

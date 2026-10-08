@@ -14,6 +14,8 @@
 > **Nightly E2E is currently red** — two known workflow bugs (compose build-context path and a missing dev server in CI), not product regressions. Tracked for Sprint 3.
 >
 > **Milestone 2 demo video:** *(link goes here after recording)*
+>
+> **Try it now** — no registration needed: `user@demo.local` / `Demo2026!` (or `organizer@demo.local` / `Demo2026!` for the organizer role). Demo data is synthetic, no real PII, reset nightly at 03:00 UTC. *(Live demo URL and exact availability hours go here once STAM-50's VM is provisioned — off-hours, the 3-min demo video above covers the same flow.)*
 
 ## The problem
 
@@ -119,6 +121,16 @@ curl http://localhost:8086/actuator/health   # notification
 
 Kafka UI: `http://localhost:8080` · Mailhog inbox: `http://localhost:8025` · Eureka: `http://localhost:8761`
 
+## Contributing
+
+Working on the Kubernetes track (`platform/`, Sprint 3)? You'll need
+`kubeseal` to add or change any secret the cluster uses — plaintext
+credentials never go into git here, only `SealedSecret` ciphertext.
+Install/usage instructions, including which protocol version to match
+to the controller: [`platform/sealed-secrets/README.md`](platform/sealed-secrets/README.md).
+Rotating the controller's own key is covered separately in
+[`docs/runbook.md`](docs/runbook.md#sealed-secrets-key-rotation-stam-57).
+
 ## Try it
 
 Hold a seat, pay, confirm. These hit services directly, which skips auth — going through the gateway on `:8085` requires a bearer token from the PKCE flow.
@@ -150,6 +162,70 @@ open http://localhost:8025
 ```
 
 Force a compensation path by setting `PAYMENT_FAILURE_RATE=1.0` in `.env` and restarting payment — the saga will refund and release the seats instead of confirming.
+
+## Demo mode (STAM-60)
+
+The public demo deployment runs with `demoMode: true`
+(`platform/charts/stampede/values-demo.yaml`), which does two things:
+
+- Identity's `/login` page shows the demo credentials
+  (`user@demo.local` / `Demo2026!`, `organizer@demo.local` /
+  `Demo2026!`) instead of a blank login form.
+- A CronJob resets the data nightly at **03:00 UTC**: it truncates
+  every table in all five databases (schema untouched —
+  `flyway_schema_history` is explicitly excluded) and restarts
+  catalog/booking/identity, whose existing seed-on-boot logic
+  repopulates fresh demo data as part of coming back up.
+
+**Demo data is synthetic. No real PII. Reset nightly at 03:00 UTC.**
+
+This is deliberately *not* the default (`demoMode: false` in
+`values.yaml`) — it's a separate values file layered on only for the
+public-facing deployment, the same pattern `values-staging.yaml` and
+`values-prod.yaml` already use.
+
+## Promotion workflow (STAM-62)
+
+Deployment is git-driven end to end (ArgoCD, STAM-61) — the only thing
+that differs between staging and prod is who commits the change.
+
+**Staging — automated, one bump per service.** Every merge to a
+service's own `main` runs that service's CI (the shared
+`service-ci.yml`), which, after pushing the image to GHCR, opens a PR
+*against this repo* updating only that service's `image.tag` in
+`values-staging.yaml`. Merging that PR is the only human action —
+ArgoCD's `stampede-staging` Application (`syncPolicy.automated`) picks
+it up within ~3 minutes on its own. The other five services' tags are
+untouched by that PR; six services merging independently never queue
+behind each other.
+
+Note this targets `values-staging.yaml` in *this* repo, not a
+per-service file in `STAM-gitops` — that's what `stampede-staging`'s
+Application actually reads (STAM-61's app-of-apps points at
+`platform/charts/stampede -f values-staging.yaml`), so this is where a
+bump has to land to mean anything. Same per-environment-not-per-service
+adaptation STAM-61 already documented, applied consistently here.
+
+**Prod — always a human PR, never automated.** Promoting a tag that's
+been verified in staging means a person opens a PR here by hand
+(`.github/PULL_REQUEST_TEMPLATE/prod-promotion.md`) copying that
+`image.tag` into `values-prod.yaml` — a real released version, never a
+bare commit SHA (CLAUDE.md §10's tagging rule, enforced by AC8's
+version-drift gate at publish time). Merging it still doesn't deploy
+anything: `stampede-prod` has no `syncPolicy.automated`, so it shows
+`OutOfSync` until that same person runs `argocd app sync stampede-prod`
+or clicks Sync in the UI. Two separate, deliberate actions — not one.
+
+**The one piece this repo can't set up by itself:** each of the 6
+service repos' CI needs a fine-grained GitHub PAT, scoped to this repo
+only (`contents: write`, `pull-requests: write`, no broader access),
+stored as that repo's own `GITOPS_PAT` secret — never a shared token in
+one central place (AC5). Creating that PAT is a GitHub account action;
+it has to be done by hand, once per service repo, by whoever
+administers the `stampede-io` org.
+
+See `docs/gitops.md` (STAM-gitops) for how a merge turns into a running
+pod end to end.
 
 ## Load testing
 
