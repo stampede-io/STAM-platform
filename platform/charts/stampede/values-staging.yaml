@@ -1,0 +1,20 @@
+# Overrides for staging — only what differs from values.yaml's defaults.
+# Usage: helm install stampede ./charts/stampede -f values-staging.yaml
+
+gateway:
+  replicaCount: 2
+identity:
+  replicaCount: 2
+  secretName: identity-db-secret
+catalog:
+  replicaCount: 2
+  secretName: catalog-db-secret
+booking:
+  replicaCount: 2
+  secretName: booking-db-secret
+payment:
+  replicaCount: 1
+  secretName: payment-db-secret
+notification:
+  replicaCount: 1
+  secretName: notification-db-secret

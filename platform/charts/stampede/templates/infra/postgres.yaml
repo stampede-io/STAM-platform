@@ -1,0 +1,70 @@
+{{- /*
+One Postgres instance per DB-owning service — CLAUDE.md's invariant is five
+separate databases, never one shared instance. Each is named "<db>-db" to
+match that service's own subchart default (DB_HOST: "<service>-db" in
+STAM-<service>/helm/values.yaml) without any override needed.
+*/ -}}
+{{- range .Values.infra.databases }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ . }}-db-secret
+type: Opaque
+stringData:
+  DB_USERNAME: {{ . | quote }}
+  DB_PASSWORD: "changeme" # kind/local only — Sealed Secrets lands in STMP-45
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ . }}-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ . }}-db
+  template:
+    metadata:
+      labels:
+        app: {{ . }}-db
+    spec:
+      containers:
+        - name: postgres
+          image: {{ $.Values.infra.postgresImage }}
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: {{ . | quote }}
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}-db-secret
+                  key: DB_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}-db-secret
+                  key: DB_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        # ponytail: emptyDir, not a PVC. Fine for kind/staging smoke-testing;
+        # prod needs real persistence before this chart is prod-ready for
+        # anything stateful — tracked as a gap, not fixed here.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ . }}-db
+spec:
+  selector:
+    app: {{ . }}-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+{{- end }}
