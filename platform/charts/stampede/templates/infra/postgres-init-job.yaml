@@ -1,0 +1,46 @@
+{{- /*
+Runs once, on install only (not every upgrade) — creates the 5 databases
+and 5 non-superuser users/grants (AC1). Helm doesn't wait for the
+StatefulSet's pod to actually be Ready before firing a post-install hook,
+so this waits for pg_isready itself rather than racing it.
+*/ -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-init
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: init
+          image: {{ .Values.infra.postgres.image }}
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-admin-secret
+                  key: POSTGRES_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-admin-secret
+                  key: POSTGRES_PASSWORD
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              until pg_isready -h postgres -U "$PGUSER"; do sleep 2; done
+              {{- range .Values.infra.postgres.databases }}
+              psql -v ON_ERROR_STOP=1 -c "SELECT 1 FROM pg_database WHERE datname = '{{ .db }}'" | grep -q 1 || psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE {{ .db }}"
+              psql -v ON_ERROR_STOP=1 -c "SELECT 1 FROM pg_roles WHERE rolname = '{{ .user }}'" | grep -q 1 || psql -v ON_ERROR_STOP=1 -c "CREATE USER {{ .user }} WITH ENCRYPTED PASSWORD '{{ .password }}'"
+              psql -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON DATABASE {{ .db }} TO {{ .user }}"
+              psql -v ON_ERROR_STOP=1 -d {{ .db }} -c "GRANT ALL ON SCHEMA public TO {{ .user }}"
+              psql -v ON_ERROR_STOP=1 -c "REVOKE ALL ON DATABASE {{ .db }} FROM PUBLIC"
+              {{- end }}

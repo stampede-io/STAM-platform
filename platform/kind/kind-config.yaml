@@ -1,5 +1,12 @@
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: stampede
+# STAM-58: kindnet (kind's default CNI) does not enforce NetworkPolicy —
+# every policy in platform/charts/stampede/templates/network-policies/
+# would silently do nothing on it. Disabling it here and installing
+# Calico instead (platform/kind/README.md) is what actually makes AC1/
+# AC3's "connection refused" real rather than assumed.
+networking:
+  disableDefaultCNI: true
 nodes:
   - role: control-plane

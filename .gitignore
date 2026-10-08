@@ -1,2 +1,6 @@
 .env
 *.env.local
+
+# Helm
+platform/charts/stampede/charts/
+platform/charts/stampede/Chart.lock
