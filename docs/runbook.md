@@ -104,3 +104,141 @@ is re-encrypted makes those older manifests permanently undecryptable.
 N manual (or scripted-by-you) commands. For the handful of secrets this
 project currently has, that's fine; it would need actual tooling before
 this became a routine, low-friction operation at real scale.
+
+## Symptom-based alerts (STAM-66)
+
+Every rule lives in `STAM-gitops/observability/alerts.yaml` as a
+`PrometheusRule` — the alert policy is reviewable and reversible via a
+normal PR (AC5 of STAM-66), not clicked together in a UI. Sections below
+are named exactly after each alert so its `runbook` annotation link lands
+here directly.
+
+### CheckoutLatencyHigh
+
+**Means:** booking's p99 request latency has been above 300ms for 5
+minutes straight (`http_server_requests_seconds_bucket{job="booking"}`).
+
+**First look:** is this one slow endpoint or everything? Check the
+booking RED dashboard (`STAM-gitops/observability/dashboards/red-per-service.json`)
+filtered to `booking`. A single hot endpoint usually means a missing
+index or N+1 query; a platform-wide rise usually means Postgres or the
+booking→catalog Feign call (`CircuitBreakerIT`'s territory) is slow.
+
+**Check:** `kubectl top pod -n <ns> -l app.kubernetes.io/name=booking`
+for CPU/memory pressure (a symptom here, never the alert condition
+itself — AC5), and the Resilience4j `catalogClient` circuit breaker's
+state in `/actuator/health`.
+
+### ErrorBudgetBurn
+
+**Means:** a service's 5xx rate has been above 1% for 5 minutes. The
+`{{ $labels.job }}` in the alert tells you which one.
+
+**First look:** `kubectl logs` the affected service's pods, filtered to
+ERROR level, and cross-reference the correlation ID of a failing request
+(CLAUDE.md §4.6 — every log line should carry one) across services to
+find where the chain actually breaks.
+
+**Common causes seen in this project:** a downstream dependency down
+(Postgres, Kafka, catalog) surfacing as 500s instead of the intended 503
+circuit-open response; a bad deploy — if this fires during or right
+after a canary step (STAM-63) or a blue-green promotion (STAM-64), that
+canary/promotion is the first suspect, not a coincidence.
+
+### ConsumerLagGrowing
+
+**Means:** a Kafka consumer group's lag has been increasing for 10
+minutes — consumers aren't keeping up with production.
+
+**Honest limit, right now:** this alert's metric
+(`kafka_consumergroup_lag`) isn't actually emitted yet — no lag exporter
+(kafka-lag-exporter / kminion) is deployed. The rule is written against
+the metric name a standard exporter would emit, so it activates the
+moment one is added, rather than silently doing nothing with no record
+of why. Until then, check lag by hand:
+`kubectl exec -n kafka stampede-broker-0 -- bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group <group>`.
+
+**First look (once wired):** which topic, which group. A growing lag on
+`reservations.events` usually means catalog's projector or notification's
+consumer is stuck or crash-looping (check `PodCrashLoop` too) — not that
+booking is producing too fast.
+
+### DLQNotEmpty
+
+**Means:** `payments.events.dlq` has at least one message — a consumer
+gave up retrying after `booking.kafka.retry.max-attempts` (default 3)
+exponential-backoff attempts (`KafkaConsumerConfig`'s
+`DeadLetterPublishingRecoverer`).
+
+**First look:** consume the DLQ topic directly and read the
+`exception-class`/`exception-message`/`stack-trace` headers
+`DeadLetterPublishingRecoverer` attaches to every DLQ record —
+`PoisonMessageDlqTest` is the test proving this header shape, so it's
+also the reference for what to expect.
+`kafka-console-consumer.sh --bootstrap-server ... --topic payments.events.dlq --property print.headers=true`.
+
+**This is investigate-by-hand, not self-healing** — nothing auto-drains
+the DLQ (CLAUDE.md §4.5). `dlq_depth` (booking, STAM-398) only ever grows
+until a human looks.
+
+### SagaStuck
+
+**Means:** the oldest non-terminal saga has been stuck for over 10
+minutes (`saga_oldest_non_terminal_age_seconds`, STAM-399) — the exact
+same condition `SagaRecoverySweep` already self-heals against every 60s
+(`saga.recovery.stale-after`, default `PT10M`).
+
+**First look:** if this alert is firing for more than a minute or two
+past the threshold, the recovery sweep itself is the problem, not the
+saga — check `SagaRecoverySweep` logs for `Recovery sweep: failed to
+recover saga=...` and `BookingSagaOrchestrator`'s `recoverStaleSaga`
+exceptions. `SagaRecoveryIT` is the flagship test proving the sweep
+normally clears this on its own.
+
+### CertExpiry
+
+**Means:** a TLS certificate managed by cert-manager expires in under 14
+days.
+
+**Honest limit, right now:** cert-manager isn't deployed yet — STMP-43
+(Ingress + TLS via DuckDNS + Let's Encrypt) is blocked on provisioning a
+real domain. The rule is written against cert-manager's own
+`cert_manager_certificate_expiration_timestamp_seconds` metric so it
+activates the moment that story lands, rather than being silently absent
+with no trace of intent.
+
+### PodCrashLoop
+
+**Means:** a pod in `apps`/`staging`/`prod` restarted more than 3 times
+in 15 minutes (`kube_pod_container_status_restarts_total`, from
+kube-state-metrics — already installed via kube-prometheus-stack).
+
+**First look:** `kubectl describe pod` for the last termination reason —
+`OOMKilled` means raise `resources.limits.memory` in that service's
+`values*.yaml`, a non-zero exit with a stack trace in `kubectl logs
+--previous` means an actual startup bug (STAM-446's booking
+`ApplicationReadyEvent`/`HoldExpiryScheduler` race is exactly this kind
+of crash-loop, already fixed as a reference case).
+
+## Alertmanager routing (STAM-66 / AC4)
+
+kube-prometheus-stack is a cluster-wide install, independent of the
+`stampede` umbrella chart's lifecycle (same pattern as Strimzi and Argo
+Rollouts) — see `platform/monitoring/README.md`. Its own
+`alertmanagerSpec.config` (set via `platform/monitoring/values.yaml`, not
+anything in `platform/charts/stampede`) defines two receivers, both
+**off by default** until their Sealed Secret is actually populated with a
+real address/webhook:
+
+- **email**: SMTP relay, same Mailhog instance (`:8025`) as notification
+  uses locally; a real SMTP relay in staging/prod via `smtp-secret`
+  (Sealed Secret).
+- **telegram**: a bot token + chat ID via `telegram-secret` (Sealed
+  Secret) — Alertmanager's native `telegram_configs`, no custom webhook
+  relay needed.
+
+**Honest limit:** no real email address or Telegram bot has been
+provisioned — doing so needs an actual account, which only the project
+owner can create. The routing config, labels, and Sealed Secret
+*placeholders* are all real and reviewable; the two secrets' actual
+values are not.
