@@ -1,0 +1,14 @@
+#cloud-config
+package_update: true
+package_upgrade: false
+
+runcmd:
+  # Single-node k3s — no HA, no extra agents. --write-kubeconfig-mode makes
+  # the kubeconfig world-readable (0644) specifically so the ssh-fetch step
+  # below (AC3's kubeconfig_path output) works as a non-root SSH user without
+  # a second sudo hop.
+  - curl -sfL https://get.k3s.io | sh -s - server --write-kubeconfig-mode 644
+  - mkdir -p /home/${admin_username}/.kube
+  - cp /etc/rancher/k3s/k3s.yaml /home/${admin_username}/.kube/config
+  - chown -R ${admin_username}:${admin_username} /home/${admin_username}/.kube
+  - touch /home/${admin_username}/.k3s-ready
