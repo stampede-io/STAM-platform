@@ -12,6 +12,12 @@ gateway:
   replicaCount: 2
   image:
     tag: ""
+  # STAM-55 AC6: never "*" — gateway's CorsConfig already enforces one
+  # explicit origin, this is just which one. Placeholder until the SPA's
+  # actual Vercel deployment URL exists; update in the same PR that wires
+  # the Vercel project up.
+  config:
+    CORS_ALLOWED_ORIGIN: "https://stampede.vercel.app"
 identity:
   replicaCount: 2
   secretName: identity-db-secret

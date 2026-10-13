@@ -16,6 +16,9 @@ gateway:
       memory: 512Mi
     limits:
       memory: 896Mi
+  # STAM-55 AC6: never "*" — placeholder until the SPA's real Vercel URL exists.
+  config:
+    CORS_ALLOWED_ORIGIN: "https://stampede.vercel.app"
 
 identity:
   replicaCount: 2
