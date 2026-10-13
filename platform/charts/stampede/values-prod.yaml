@@ -17,8 +17,12 @@ gateway:
     limits:
       memory: 896Mi
   # STAM-55 AC6: never "*" — placeholder until the SPA's real Vercel URL exists.
+  # STAM-68 AC5: 10% trace sampling in prod — always_on (values.yaml's
+  # default) would overwhelm Tempo under real traffic.
   config:
     CORS_ALLOWED_ORIGIN: "https://stampede.vercel.app"
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
 
 identity:
   replicaCount: 2
@@ -31,6 +35,9 @@ identity:
       memory: 512Mi
     limits:
       memory: 896Mi
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
 
 catalog:
   replicaCount: 3
@@ -43,6 +50,9 @@ catalog:
       memory: 512Mi
     limits:
       memory: 896Mi
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
 
 booking:
   replicaCount: 3
@@ -55,6 +65,9 @@ booking:
       memory: 768Mi
     limits:
       memory: 1280Mi
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
 
 payment:
   replicaCount: 2
@@ -67,9 +80,15 @@ payment:
       memory: 512Mi
     limits:
       memory: 896Mi
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
 
 notification:
   replicaCount: 2
   secretName: notification-db-secret
   image:
     tag: "0.0.1-SNAPSHOT"
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
