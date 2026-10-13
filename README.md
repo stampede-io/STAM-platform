@@ -255,6 +255,15 @@ Rate-limit burst test: [`load-tests/rate-limit-burst.js`](load-tests/rate-limit-
 | [0004](docs/adr/0004-k8s-dns-over-eureka.md)                 | K8s DNS instead of Eureka | Accepted |
 | [0005](docs/adr/0005-bff-token-handler-in-gateway.md)        | BFF token handler in the gateway | Accepted |
 
+**STAM-56 evidence (the seven Eureka/Config Server deletion PRs behind ADR-0004):**
+[STAM-gateway#13](https://github.com/stampede-io/STAM-gateway/pull/13) ·
+[STAM-identity#13](https://github.com/stampede-io/STAM-identity/pull/13) ·
+[STAM-catalog#25](https://github.com/stampede-io/STAM-catalog/pull/25) ·
+[STAM-booking#32](https://github.com/stampede-io/STAM-booking/pull/32) ·
+[STAM-payment#15](https://github.com/stampede-io/STAM-payment/pull/15) ·
+[STAM-notification#9](https://github.com/stampede-io/STAM-notification/pull/9) ·
+[STAM-platform#27](https://github.com/stampede-io/STAM-platform/pull/27)
+
 ## Repository layout (polyrepo)
 
 Each service is its own git repo under the [`stampede-io`](https://github.com/stampede-io) org. This one, `STAM-platform`, is the shared-infra repo.
