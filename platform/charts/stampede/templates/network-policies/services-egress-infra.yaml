@@ -68,6 +68,30 @@ spec:
         - protocol: TCP
           port: 8080
 ---
+# Egress side of booking's and catalog's independent JWKS validation
+# against identity (see identity-ingress in services-ingress.yaml for
+# the matching ingress side and why it exists -- found live, STAM-324).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: services-egress-identity
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [booking, catalog]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: identity
+      ports:
+        - protocol: TCP
+          port: 8080
+---
 # payment is the one service that talks to something outside this
 # cluster at all: Stripe test mode, over HTTPS (StripeConfig.java /
 # CLAUDE.md §5). Everything else above is cluster-internal; without this

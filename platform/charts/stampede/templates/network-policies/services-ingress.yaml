@@ -1,5 +1,11 @@
-# STAM-58 / AC1(2): only the gateway can reach each backend service.
-# identity, payment and notification have no other caller at all.
+# STAM-58 / AC1(2) said only the gateway calls each backend service, true
+# for payment and notification. identity is the one exception found by
+# actually running the full register->login->hold flow on kind (STAM-324):
+# booking (STAM-447) and catalog (STAM-324's own JWKS fix) each validate
+# the caller's JWT independently against identity's JWKS, not just once
+# at the gateway -- both need a direct path to identity:8080, or every
+# authenticated request they handle times out with no useful error short
+# of "Connect timed out" in the service's own log.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -15,6 +21,12 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: gateway
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: booking
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: catalog
       ports:
         - protocol: TCP
           port: 8080
