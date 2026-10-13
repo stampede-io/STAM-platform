@@ -1,4 +1,43 @@
 {{- /*
+STAM-324: this Job's pod carries only the default job-name=postgres-init
+label, which services-egress-postgres's selector (app.kubernetes.io/name
+in the 5 services) never matches. With default-deny-all in effect, this
+hook timed out waiting for a connection that network policy silently
+blocked -- found by actually running this chart on kind, not by reading
+it. The NetworkPolicy below is scoped to this one Job's pods only.
+*/ -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-init-egress
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  podSelector:
+    matchLabels:
+      job-name: postgres-init
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # DNS -- same rule allow-dns-egress.yaml gives every other pod.
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+{{- /*
 Runs once, on install only (not every upgrade) — creates the 5 databases
 and 5 non-superuser users/grants (AC1). Helm doesn't wait for the
 StatefulSet's pod to actually be Ready before firing a post-install hook,
