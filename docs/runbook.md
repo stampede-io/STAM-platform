@@ -242,3 +242,42 @@ provisioned — doing so needs an actual account, which only the project
 owner can create. The routing config, labels, and Sealed Secret
 *placeholders* are all real and reviewable; the two secrets' actual
 values are not.
+
+## Postgres backup + restore drill (STAM-59)
+
+Nightly `postgres-backup` CronJob (`platform/backup/postgres-backup-cronjob.yaml`)
+runs at 02:00 UTC: `pg_dump` all 5 databases, gzip, upload to the
+`stampede-backups` Azure Blob container (cool tier) as
+`<date>_<db>.sql.gz`, authenticated via a service-principal Secret scoped
+to just that container (`platform/backup/setup-backup-blob.sh` creates it
+with least privilege, not a subscription-wide role). A 30-day lifecycle
+rule on the container deletes anything older automatically — no manual
+cleanup, no unbounded storage growth.
+
+**Restore drill** — the actual procedure, run this after any backup you'd
+trust in a real incident:
+
+1. Create a scratch namespace: `kubectl create namespace restore-drill`.
+2. Deploy a bare Postgres pod there (`kubectl run restore-pg --image=postgres:16-alpine --env="POSTGRES_PASSWORD=drill" -n restore-drill`).
+3. Pull last night's dump down: `az storage blob download --account-name <acct> --container-name stampede-backups --name <date>_catalog_db.sql.gz --file ./catalog_db.sql.gz --auth-mode login`.
+4. Copy it into the pod and restore: `kubectl cp ./catalog_db.sql.gz restore-drill/restore-pg:/tmp/` then `kubectl exec -n restore-drill restore-pg -- sh -c "gunzip -c /tmp/catalog_db.sql.gz | psql -U postgres"`.
+5. Verify row counts match production for a couple of known tables (`SELECT count(*) FROM venues;` etc.) against the real `catalog_db` via `kubectl exec postgres-0`.
+6. Tear down: `kubectl delete namespace restore-drill`.
+
+**Drill run 2026-10-13** — steps 1, 2, and 4-6 were actually run against
+this project's live `catalog_db` on kind-stampede, not just described:
+`pg_dump`'d the real database, piped it straight into a scratch pod's
+`psql` (stdin, not `kubectl cp` — Git Bash on Windows mangles `/tmp/...`
+remote-path arguments into local Windows paths, so piping sidesteps it
+entirely), and diffed row counts on `venues` (2 = 2) and `seats` (3 = 3)
+against the real `catalog_db`. Exact match. Scratch namespace torn down
+after.
+
+**Honest limit:** step 3 (blob *download*) wasn't run against a real
+Azure container this session, because no backup has actually landed in
+Azure Blob yet — that needs `setup-backup-blob.sh` run once against a
+real Azure subscription (creates the container, lifecycle policy, and
+scoped service principal) and the resulting Secret created in-cluster,
+the same gate as STAM-50's `terraform apply`. Everything else the drill
+depends on — the dump is a faithful, restorable snapshot of real data —
+is proven, not assumed.

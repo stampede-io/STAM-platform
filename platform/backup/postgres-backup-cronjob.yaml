@@ -1,0 +1,84 @@
+# STAM-59 AC1-AC3: nightly pg_dump of all 5 databases, uploaded to Azure
+# Blob (cool tier). Uses a plain Secret-backed service principal rather
+# than Workload Identity -- the AC explicitly allows either, and Workload
+# Identity needs the cluster's OIDC issuer registered with Azure AD, which
+# is real one-time Azure/cluster setup this manifest can't do for you
+# (see docs/runbook.md's restore drill section for that step). The secret
+# never appears in a log line: `az login --service-principal` takes it as
+# env vars, and the upload command interpolates nothing from it directly.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: apps
+spec:
+  schedule: "0 2 * * *" # 02:00 UTC, AC1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: backup
+              image: mcr.microsoft.com/azure-cli:2.65.0
+              env:
+                - name: PGHOST
+                  value: postgres
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-admin-secret
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-admin-secret
+                      key: POSTGRES_PASSWORD
+                - name: AZURE_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: azure-backup-credentials
+                      key: client-id
+                - name: AZURE_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: azure-backup-credentials
+                      key: client-secret
+                - name: AZURE_TENANT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: azure-backup-credentials
+                      key: tenant-id
+                - name: AZURE_STORAGE_ACCOUNT
+                  valueFrom:
+                    secretKeyRef:
+                      name: azure-backup-credentials
+                      key: storage-account
+              command:
+                - sh
+                - -c
+                - |
+                  set -euo pipefail
+                  apk add --no-cache postgresql16-client gzip >/dev/null
+
+                  # az login's own stdout/stderr never echoes the secret back;
+                  # --output none keeps even the (non-sensitive) token response quiet.
+                  az login --service-principal \
+                    -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" \
+                    --output none
+
+                  DATE=$(date +%Y-%m-%d)
+                  for db in identity_db catalog_db booking_db payment_db notification_db; do
+                    echo "dumping $db"
+                    pg_dump -h "$PGHOST" -U "$PGUSER" -d "$db" | gzip > "/tmp/${DATE}_${db}.sql.gz"
+                    az storage blob upload \
+                      --account-name "$AZURE_STORAGE_ACCOUNT" \
+                      --auth-mode login \
+                      --container-name stampede-backups \
+                      --name "${DATE}_${db}.sql.gz" \
+                      --file "/tmp/${DATE}_${db}.sql.gz" \
+                      --tier Cool \
+                      --output none
+                    echo "uploaded ${DATE}_${db}.sql.gz"
+                  done
