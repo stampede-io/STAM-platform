@@ -121,3 +121,30 @@ spec:
       ports:
         - protocol: TCP
           port: 443
+---
+# STAM-68 AC1: all 6 services' OTel Java agents export traces to Tempo in
+# the monitoring namespace. Found live -- spans never left the pod
+# (confirmed via Tempo's own search API returning zero traces while
+# identity's agent logged "Failed to export spans ... timeout") until
+# this rule existed; default-deny-all silently ate the connection the
+# same way it did for postgres-init (STAM-324) and Kafka/Redis above.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: services-egress-tempo
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [identity, catalog, booking, payment, notification, gateway]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 4318
