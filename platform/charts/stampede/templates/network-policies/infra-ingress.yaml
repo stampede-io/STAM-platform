@@ -29,6 +29,13 @@ spec:
         - podSelector:
             matchLabels:
               app: demo-reset
+        # STAM-324: same bug, same fix, as postgres-init-egress in
+        # postgres-init-job.yaml -- the post-install hook Job that
+        # creates the 5 databases/users needs Postgres's ingress side to
+        # agree too, or it hangs exactly like the egress side did.
+        - podSelector:
+            matchLabels:
+              job-name: postgres-init
       ports:
         - protocol: TCP
           port: 5432
