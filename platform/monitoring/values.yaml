@@ -41,3 +41,53 @@ alertmanager:
 # platform/charts/stampede) -- no explicit config needed here, just
 # `kubectl apply -f ../../../STAM-gitops/observability/alerts.yaml` (or
 # ArgoCD, once that repo is wired to sync this one).
+
+# STAM-68 AC4/AC5: exemplar storage is opt-in even on recent Prometheus --
+# without this flag, Micrometer's otel-bridge-attached exemplars land in
+# the TSDB's write-ahead log but are silently dropped at query time.
+prometheus:
+  prometheusSpec:
+    enableFeatures:
+      - exemplar-storage
+
+# Tempo and Loki (installed separately -- `helm install tempo
+# grafana/tempo` / `helm install loki grafana/loki`, both in `monitoring`,
+# not part of this kube-prometheus-stack release) wired into this same
+# Grafana as additional datasources. tracesToLogsV2 is the actual AC4
+# mechanism: click a span in the Tempo waterfall -> "Logs for this span"
+# queries Loki filtered to that traceId, which Alloy's pipeline already
+# promotes to a label (platform/README or the Alloy install notes).
+# exemplarTraceIdDestinations on the Prometheus datasource is the other
+# half -- click an exemplar dot on a latency graph -> jumps straight into
+# the Tempo trace it came from.
+grafana:
+  sidecar:
+    datasources:
+      # The chart auto-provisions its own "Prometheus" datasource; disabled
+      # here so the one below (with exemplarTraceIdDestinations) is the
+      # only one, not a second, unlinked duplicate sitting next to it.
+      defaultDatasourceEnabled: false
+  additionalDataSources:
+    - name: Prometheus
+      type: prometheus
+      url: http://prometheus-kube-prometheus-prometheus.monitoring.svc:9090
+      isDefault: true
+      jsonData:
+        exemplarTraceIdDestinations:
+          - name: traceId
+            datasourceUid: tempo
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.monitoring.svc:3100
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo.monitoring.svc:3100
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          filterByTraceID: true
+          tags:
+            - key: service.name
+              value: job
