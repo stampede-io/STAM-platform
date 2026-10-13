@@ -1,0 +1,22 @@
+# default-deny-all blocks egress too, which includes DNS lookups — every
+# other policy's "to: podSelector/namespaceSelector" rule is useless if the
+# pod can't resolve the target's name in the first place. This is the one
+# rule every pod in the namespace needs regardless of what it talks to.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

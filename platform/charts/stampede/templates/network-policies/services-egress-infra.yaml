@@ -1,0 +1,150 @@
+# Not named directly in AC1, but required for default-deny-all egress to
+# not silently break every Kafka producer/consumer and Redis-backed
+# feature in the system. Kafka lives in its own `kafka` namespace
+# (Strimzi, ADR-0007) so this needs a namespaceSelector rather than a
+# same-namespace podSelector.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: services-egress-kafka
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [identity, catalog, booking, payment, notification]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+---
+# Redis: catalog's availability cache and booking's TTL hold mirror
+# (CLAUDE.md §4.9 / §2). identity, payment and notification don't use it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: services-egress-redis
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [catalog, booking]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+# Egress side of the booking -> catalog sync hop (see catalog-ingress in
+# services-ingress.yaml for the matching ingress side and why it exists).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: booking-egress-catalog
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: booking
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: catalog
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Egress side of booking's and catalog's independent JWKS validation
+# against identity (see identity-ingress in services-ingress.yaml for
+# the matching ingress side and why it exists -- found live, STAM-324).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: services-egress-identity
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [booking, catalog]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: identity
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# payment is the one service that talks to something outside this
+# cluster at all: Stripe test mode, over HTTPS (StripeConfig.java /
+# CLAUDE.md §5). Everything else above is cluster-internal; without this
+# rule, default-deny-all would silently break every real payment
+# authorization the moment these policies apply. ipBlock excludes the
+# private ranges a pod could otherwise reach on the same port — this
+# rule is for calling out to the internet, not to other pods in the
+# cluster or the node's own network.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payment-egress-internet
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: payment
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+---
+# STAM-68 AC1: all 6 services' OTel Java agents export traces to Tempo in
+# the monitoring namespace. Found live -- spans never left the pod
+# (confirmed via Tempo's own search API returning zero traces while
+# identity's agent logged "Failed to export spans ... timeout") until
+# this rule existed; default-deny-all silently ate the connection the
+# same way it did for postgres-init (STAM-324) and Kafka/Redis above.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: services-egress-tempo
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [identity, catalog, booking, payment, notification, gateway]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 4318

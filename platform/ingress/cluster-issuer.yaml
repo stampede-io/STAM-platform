@@ -1,0 +1,19 @@
+# STAM-55 AC3: Let's Encrypt via HTTP-01 challenge, routed through the
+# same NGINX Ingress Controller the app Ingress uses -- cert-manager needs
+# port 80 reachable at the DuckDNS hostname to complete the challenge, so
+# this can only succeed on the real k3s VM (public IP + DuckDNS pointing at
+# it), never on kind. Written and reviewable now; applied there later.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ${ACME_EMAIL}
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

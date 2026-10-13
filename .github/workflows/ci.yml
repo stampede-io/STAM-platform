@@ -1,0 +1,22 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [Dev, main]
+
+jobs:
+  build:
+    name: No plaintext Secrets outside the documented allowlist (STAM-57)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for plaintext Secret resources
+        env:
+          # actions/checkout@v4 puts this repo at .../work/STAM-platform/STAM-platform —
+          # one level deeper than the polyrepo-sibling layout the script assumes by
+          # default (see CLAUDE.md known-issue #1a for the same path gotcha). Pointing
+          # REPO_ROOT at the checkout's parent restores that assumption: only this
+          # repo exists there, so only its own manifests get scanned.
+          REPO_ROOT: ${{ github.workspace }}/..
+        run: bash platform/sealed-secrets/check-no-plaintext-secrets.sh

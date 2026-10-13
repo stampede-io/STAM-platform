@@ -1,0 +1,25 @@
+apiVersion: v2
+name: stampede
+description: STAMPEDE platform umbrella chart — all 6 services, pulled in as each service's own published OCI chart
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: gateway
+    version: 0.0.1-SNAPSHOT
+    repository: oci://ghcr.io/stampede-io/charts
+  - name: identity
+    version: 0.0.1-SNAPSHOT
+    repository: oci://ghcr.io/stampede-io/charts
+  - name: catalog
+    version: 0.0.1-SNAPSHOT
+    repository: oci://ghcr.io/stampede-io/charts
+  - name: booking
+    version: 0.0.1-SNAPSHOT
+    repository: oci://ghcr.io/stampede-io/charts
+  - name: payment
+    version: 0.0.1-SNAPSHOT
+    repository: oci://ghcr.io/stampede-io/charts
+  - name: notification
+    version: 0.0.1-SNAPSHOT
+    repository: oci://ghcr.io/stampede-io/charts

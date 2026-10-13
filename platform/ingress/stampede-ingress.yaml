@@ -1,0 +1,30 @@
+# STAM-55 AC2/AC3/AC4: routes the public hostname to gateway-service and
+# terminates TLS via the cert-manager-issued secret. Only meaningful on a
+# cluster with a real public IP behind the hostname below (the k3s VM,
+# DuckDNS-updated) -- the HTTP-01 challenge cert-manager runs against this
+# Ingress needs the internet to actually reach it on port 80.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: stampede-gateway
+  namespace: apps
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - ${DUCKDNS_HOSTNAME}
+      secretName: stampede-tls
+  rules:
+    - host: ${DUCKDNS_HOSTNAME}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8080

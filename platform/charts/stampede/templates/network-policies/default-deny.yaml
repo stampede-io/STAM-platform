@@ -1,0 +1,14 @@
+# STAM-58 / AC1: default-deny everything in this namespace, then each
+# other file in this directory opens exactly the traffic that's actually
+# needed. A pod with no matching NetworkPolicy here keeps whatever the
+# cluster's default is (usually allow-all) — this is what actually turns
+# that off for this namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

@@ -1,0 +1,117 @@
+# STAM-58 / AC1(2) said only the gateway calls each backend service, true
+# for payment and notification. identity is the one exception found by
+# actually running the full register->login->hold flow on kind (STAM-324):
+# booking (STAM-447) and catalog (STAM-324's own JWKS fix) each validate
+# the caller's JWT independently against identity's JWKS, not just once
+# at the gateway -- both need a direct path to identity:8080, or every
+# authenticated request they handle times out with no useful error short
+# of "Connect timed out" in the service's own log.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: identity-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: identity
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: booking
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: catalog
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: payment-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: payment
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: notification-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: notification
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: booking-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: booking
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# catalog is the one exception to "only gateway can reach each service":
+# CLAUDE.md §2/§4 — booking -> catalog is the system's only synchronous
+# service-to-service call (OpenFeign behind booking's circuit breaker,
+# CircuitBreakerIT), seat validation on the booking path. Catalog's
+# ingress has to allow that caller too, or the one real sync hop in the
+# system breaks the moment this NetworkPolicy applies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: catalog-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: catalog
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: booking
+      ports:
+        - protocol: TCP
+          port: 8080

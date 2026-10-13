@@ -1,0 +1,153 @@
+{{- /*
+STAM-60 / AC2: nightly demo reset. Two steps, in order (an initContainer
+runs to completion before the main container starts):
+  1. TRUNCATE every application table in all 5 databases (keeping
+     schema — flyway_schema_history is explicitly excluded).
+  2. Restart catalog/booking/identity so each one's existing seed-on-
+     boot logic (DataLoader, DemoUserSeeder — both already @Profile
+     "demo") repopulates fresh data. No separate reset-specific seed
+     code: this reuses the same idempotent seeders dev boots already
+     rely on, now also triggered by truncation instead of only by a
+     missing row.
+payment and notification don't seed anything on boot, so they aren't
+restarted — nothing in them needs re-populating, only clearing out.
+*/ -}}
+{{- if .Values.demoMode }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demo-reset
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: demo-reset-restart-deployments
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: demo-reset-restart-deployments
+subjects:
+  - kind: ServiceAccount
+    name: demo-reset
+roleRef:
+  kind: Role
+  name: demo-reset-restart-deployments
+  apiGroup: rbac.authorization.k8s.io
+---
+{{- /*
+STAM-58's default-deny-all NetworkPolicy applies cluster-wide in this
+namespace, including to this Job's pod — verified live, it silently
+blocked both the truncate initContainer's call to postgres AND the main
+container's call to the Kubernetes API server before this policy
+existed. The API server's real address isn't a stable, predictable IP:
+on a kubeadm/kind cluster it's a node IP, on a managed control plane
+it's something else entirely, and NetworkPolicy evaluates egress
+against the actual backing address, not the ClusterIP (verified live:
+an ipBlock for the kubernetes Service's ClusterIP did NOT work; the
+Endpoints object's real address did). `lookup` fetches that live from
+the `kubernetes` Service's own Endpoints — portable across distros,
+unlike hardcoding a node IP.
+*/}}
+{{- $ep := lookup "v1" "Endpoints" "default" "kubernetes" }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: demo-reset-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: demo-reset
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    {{- if $ep }}
+    - to:
+        {{- range $subset := $ep.subsets }}
+        {{- range $addr := $subset.addresses }}
+        - ipBlock:
+            cidr: {{ $addr.ip }}/32
+        {{- end }}
+        {{- end }}
+      ports:
+        {{- range $subset := $ep.subsets }}
+        {{- range $port := $subset.ports }}
+        - protocol: TCP
+          port: {{ $port.port }}
+        {{- end }}
+        {{- end }}
+    {{- end }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: demo-reset
+spec:
+  schedule: "0 3 * * *" # 03:00 UTC, AC2
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: demo-reset
+        spec:
+          serviceAccountName: demo-reset
+          restartPolicy: Never
+          initContainers:
+            - name: truncate
+              image: {{ .Values.infra.postgres.image }}
+              env:
+                - name: PGHOST
+                  value: postgres
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-admin-secret
+                      key: POSTGRES_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-admin-secret
+                      key: POSTGRES_PASSWORD
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  {{- range .Values.infra.postgres.databases }}
+                  psql -v ON_ERROR_STOP=1 -d {{ .db }} -c "
+                    DO \$\$
+                    DECLARE r RECORD;
+                    BEGIN
+                      FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'flyway_schema_history' LOOP
+                        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE';
+                      END LOOP;
+                    END \$\$;
+                  "
+                  {{- end }}
+          containers:
+            - name: restart-seeded-services
+              # bitnami/kubectl no longer publishes versioned tags (only
+              # latest) — verified live, every "X.Y"/"X.Y.Z" pull 404s.
+              image: bitnami/kubectl:latest
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  kubectl rollout restart deployment/catalog deployment/booking deployment/identity
+                  kubectl rollout status deployment/catalog --timeout=120s
+                  kubectl rollout status deployment/booking --timeout=120s
+                  kubectl rollout status deployment/identity --timeout=120s
+{{- end }}

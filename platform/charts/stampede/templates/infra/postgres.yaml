@@ -1,0 +1,85 @@
+{{- /*
+ADR-0006: one Postgres instance, five isolated databases with per-service
+credentials — not five managed servers. Database-per-service is an
+ownership boundary, not a hardware boundary; see docs/adr/0006-*.md.
+*/ -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-admin-secret
+type: Opaque
+stringData:
+  POSTGRES_USER: {{ .Values.infra.postgres.adminUser | quote }}
+  POSTGRES_PASSWORD: {{ .Values.infra.postgres.adminPassword | quote }}
+---
+{{- range .Values.infra.postgres.databases }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .service }}-db-secret
+type: Opaque
+stringData:
+  DB_USERNAME: {{ .user | quote }}
+  DB_PASSWORD: {{ .password | quote }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.infra.postgres.image }}
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-admin-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-admin-secret
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.infra.postgres.adminUser }}"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.infra.postgres.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

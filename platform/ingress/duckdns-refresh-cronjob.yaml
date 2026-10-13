@@ -1,0 +1,77 @@
+# STAM-55 AC5: DuckDNS has no concept of "point at this LoadBalancer" --
+# it's just a dynamic-DNS updater, so something has to poll the ingress's
+# actual external IP and push it. curl's own IP-echo endpoint on the
+# update call means we don't need a separate "what's my IP" step: DuckDNS
+# updates to whatever source IP the request arrives from when ip= is
+# omitted, but the ingress's IP is NOT this CronJob pod's own IP (it's a
+# LoadBalancer the ingress controller holds) -- so this fetches the
+# Service's own status.loadBalancer.ingress[].ip via the K8s API first.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: duckdns-refresh
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: duckdns-refresh
+  namespace: ingress-nginx
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: duckdns-refresh
+  namespace: ingress-nginx
+subjects:
+  - kind: ServiceAccount
+    name: duckdns-refresh
+    namespace: kube-system
+roleRef:
+  kind: Role
+  name: duckdns-refresh
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: duckdns-refresh
+  namespace: kube-system
+spec:
+  schedule: "*/5 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: duckdns-refresh
+          restartPolicy: OnFailure
+          containers:
+            - name: duckdns-refresh
+              image: bitnami/kubectl:1.30
+              env:
+                - name: DUCKDNS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: duckdns-credentials
+                      key: token
+                - name: DUCKDNS_DOMAIN
+                  valueFrom:
+                    secretKeyRef:
+                      name: duckdns-credentials
+                      key: domain
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  ip=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+                    -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                  if [ -z "$ip" ]; then
+                    echo "no LoadBalancer IP yet, skipping this run" >&2
+                    exit 0
+                  fi
+                  curl -fsS "https://www.duckdns.org/update?domains=${DUCKDNS_DOMAIN}&token=${DUCKDNS_TOKEN}&ip=${ip}"

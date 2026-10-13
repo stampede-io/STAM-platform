@@ -1,0 +1,35 @@
+# AC3: Strimzi's standard JMX-to-Prometheus exporter rules (the same ones
+# in Strimzi's own example-metrics repo) — broker, topic, and partition
+# level metrics, scrapeable at the Kafka pod's /metrics on port 9404.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-metrics-config
+  namespace: kafka
+data:
+  kafka-metrics-config.yaml: |
+    lowercaseOutputName: true
+    rules:
+      - pattern: kafka.server<type=(.+), name=(.+)PerSec\w*><>Count
+        name: kafka_server_$1_$2_total
+        type: COUNTER
+      - pattern: kafka.server<type=(.+), name=(.+), topic=(.+)><>Count
+        name: kafka_server_$1_$2_total
+        type: COUNTER
+        labels:
+          topic: "$3"
+      - pattern: kafka.server<type=(.+), name=(.+)><>Value
+        name: kafka_server_$1_$2
+        type: GAUGE
+      - pattern: kafka.controller<type=(.+), name=(.+)><>Value
+        name: kafka_controller_$1_$2
+        type: GAUGE
+      - pattern: kafka.network<type=(.+), name=(.+)><>Value
+        name: kafka_network_$1_$2
+        type: GAUGE
+      - pattern: "kafka.log<type=Log, name=(.+), topic=(.+), partition=(.+)><>Value"
+        name: kafka_log_$1
+        type: GAUGE
+        labels:
+          topic: "$2"
+          partition: "$3"

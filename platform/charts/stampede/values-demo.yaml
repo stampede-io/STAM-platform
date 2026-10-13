@@ -1,0 +1,23 @@
+# Overrides for the public demo deployment (STAM-60) — only what differs
+# from values.yaml's defaults.
+# Usage: helm install stampede ./charts/stampede -f values-demo.yaml
+#
+# demoMode: true turns on the nightly reset CronJob (templates/demo/).
+# The per-service config overrides below are what actually make that
+# reset mean something: "demo" added to SPRING_PROFILES_ACTIVE is what
+# re-triggers catalog's DataLoader and identity's DemoUserSeeder after
+# the CronJob truncates their databases and restarts these pods —
+# without it, the restart would just come back up empty.
+
+demoMode: true
+
+identity:
+  config:
+    SPRING_PROFILES_ACTIVE: "k8s,demo"
+    DEMO_MODE: "true"
+catalog:
+  config:
+    SPRING_PROFILES_ACTIVE: "k8s,demo"
+booking:
+  config:
+    SPRING_PROFILES_ACTIVE: "k8s,demo"

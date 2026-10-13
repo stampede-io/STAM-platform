@@ -1,0 +1,26 @@
+# STAM-53 AC3: the Kafka CR's jmxPrometheusExporter config (kafka-cluster.yaml)
+# makes the broker emit real kafka_server_* metrics on container port 9404
+# ("tcp-prometheus") -- confirmed live via `kubectl exec ... curl
+# localhost:9404/metrics`. But nothing was scraping it: port 9404 isn't on
+# the brokers Service, and there was no PodMonitor/ServiceMonitor, so
+# kube-prometheus-stack's Prometheus never discovered it. A PodMonitor
+# (not ServiceMonitor) because the metrics port isn't exposed on any
+# Service -- same `release: prometheus` label as servicemonitors.yaml uses,
+# for the same reason (that's what the Prometheus CR's podMonitorSelector
+# watches for).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: strimzi-kafka
+  namespace: kafka
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      strimzi.io/cluster: stampede
+      strimzi.io/kind: Kafka
+  podMetricsEndpoints:
+    - port: tcp-prometheus
+      path: /metrics
+      interval: 30s

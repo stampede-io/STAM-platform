@@ -1,0 +1,93 @@
+# STAM-66 / AC4: Alertmanager routing. The smtp password and telegram
+# bot token are never inlined here -- alertmanager-secrets.yaml's
+# SealedSecrets are mounted into the pod (alertmanagerSpec.secrets
+# below) and referenced by the _file config options, so the plaintext
+# never has to appear in a values file that's committed to git.
+alertmanager:
+  alertmanagerSpec:
+    secrets:
+      - alertmanager-smtp
+      - alertmanager-telegram
+  config:
+    global:
+      smtp_smarthost: "mailhog:1025"
+      smtp_from: "alertmanager@stampede.local"
+      smtp_auth_username: "alertmanager"
+      smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-smtp/password
+    route:
+      receiver: default
+      routes:
+        - receiver: default
+          continue: true
+    receivers:
+      - name: default
+        email_configs:
+          - to: "oncall@stampede.local"
+            send_resolved: true
+        telegram_configs:
+          # code-review / live-verified: Prometheus Operator's own
+          # validation rejects chat_id: 0 as "missing chat_id" (it treats
+          # the zero value as unset, not a real ID) -- confirmed via the
+          # operator's own reconcile logs, which also means a 0 here
+          # silently breaks the *entire* Alertmanager config, not just
+          # this receiver. -1 is a placeholder that passes validation;
+          # replace with a real chat_id from @getidbot once a real bot exists.
+          - bot_token_file: /etc/alertmanager/secrets/alertmanager-telegram/token
+            chat_id: -1
+            send_resolved: true
+
+# AC2: PrometheusRule CRs are picked up automatically via ruleSelector's
+# default (same release-label match as the ServiceMonitors in
+# platform/charts/stampede) -- no explicit config needed here, just
+# `kubectl apply -f ../../../STAM-gitops/observability/alerts.yaml` (or
+# ArgoCD, once that repo is wired to sync this one).
+
+# STAM-68 AC4/AC5: exemplar storage is opt-in even on recent Prometheus --
+# without this flag, Micrometer's otel-bridge-attached exemplars land in
+# the TSDB's write-ahead log but are silently dropped at query time.
+prometheus:
+  prometheusSpec:
+    enableFeatures:
+      - exemplar-storage
+
+# Tempo and Loki (installed separately -- `helm install tempo
+# grafana/tempo` / `helm install loki grafana/loki`, both in `monitoring`,
+# not part of this kube-prometheus-stack release) wired into this same
+# Grafana as additional datasources. tracesToLogsV2 is the actual AC4
+# mechanism: click a span in the Tempo waterfall -> "Logs for this span"
+# queries Loki filtered to that traceId, which Alloy's pipeline already
+# promotes to a label (platform/README or the Alloy install notes).
+# exemplarTraceIdDestinations on the Prometheus datasource is the other
+# half -- click an exemplar dot on a latency graph -> jumps straight into
+# the Tempo trace it came from.
+grafana:
+  sidecar:
+    datasources:
+      # The chart auto-provisions its own "Prometheus" datasource; disabled
+      # here so the one below (with exemplarTraceIdDestinations) is the
+      # only one, not a second, unlinked duplicate sitting next to it.
+      defaultDatasourceEnabled: false
+  additionalDataSources:
+    - name: Prometheus
+      type: prometheus
+      url: http://prometheus-kube-prometheus-prometheus.monitoring.svc:9090
+      isDefault: true
+      jsonData:
+        exemplarTraceIdDestinations:
+          - name: traceId
+            datasourceUid: tempo
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.monitoring.svc:3100
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo.monitoring.svc:3100
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          filterByTraceID: true
+          tags:
+            - key: service.name
+              value: job

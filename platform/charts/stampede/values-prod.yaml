@@ -1,0 +1,94 @@
+# Overrides for prod — only what differs from values.yaml's defaults.
+# Usage: helm install stampede ./charts/stampede -f values-prod.yaml
+#
+# Image tags intentionally pinned to a real released version, never
+# "latest" (CLAUDE.md §10's tagging rule) — bump these on every release,
+# which is exactly the version-drift AC8 guards against on the service
+# side (helm/Chart.yaml's appVersion must already match this at publish time).
+
+gateway:
+  replicaCount: 3
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 896Mi
+  # STAM-55 AC6: never "*" — placeholder until the SPA's real Vercel URL exists.
+  # STAM-68 AC5: 10% trace sampling in prod — always_on (values.yaml's
+  # default) would overwhelm Tempo under real traffic.
+  config:
+    CORS_ALLOWED_ORIGIN: "https://stampede.vercel.app"
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
+
+identity:
+  replicaCount: 2
+  secretName: identity-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 896Mi
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
+
+catalog:
+  replicaCount: 3
+  secretName: catalog-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 896Mi
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
+
+booking:
+  replicaCount: 3
+  secretName: booking-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 768Mi
+    limits:
+      memory: 1280Mi
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
+
+payment:
+  replicaCount: 2
+  secretName: payment-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 896Mi
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
+
+notification:
+  replicaCount: 2
+  secretName: notification-db-secret
+  image:
+    tag: "0.0.1-SNAPSHOT"
+  config:
+    OTEL_TRACES_SAMPLER: "traceidratio"
+    OTEL_TRACES_SAMPLER_ARG: "0.1"
