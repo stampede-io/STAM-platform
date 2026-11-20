@@ -1,0 +1,6 @@
+# Cold-start hold latency, remeasured on compose-dev 2026-11-20 (first hold through the gateway after each start)
+booking+catalog restarted:        hold 1: 667 ms, then 46 / 37 / 180 ms
+all 7 app services restarted:     hold 1: 399 ms, then 48 / 53 / 50 ms
+full stack down + up (102 s):     hold 1: 416 ms, then 41 / 32 / 36 ms  (BookingApplication started in 43.0 s)
+
+The >20 s first hold seen during the STAM-71 audit did not reproduce in any of these. It happened while Testcontainers ITs and image rebuilds were running on the same host.

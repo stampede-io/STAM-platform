@@ -67,7 +67,7 @@ Jira bug:
 
 Also observed while running AC3 locally:
 - **Frontend nginx DNS caching (fixed, [STAM-455](https://puliththewmika-dev.atlassian.net/browse/STAM-455)).** `STAM-frontend/nginx.conf` had `proxy_pass http://gateway:8080` with no `resolver`, so nginx kept the gateway container's old IP after the gateway was recreated, and the SPA returned 502 until the frontend restarted. It now uses Docker's DNS (`127.0.0.11`) and a variable upstream. Live: the gateway was recreated on a new IP and the SPA kept returning 200 without a frontend restart.
-- **Cold-start hold latency.** The first hold after the stack starts took more than 20 s (JIT, Hikari warm-up and the first Feign call to catalog), and nginx logged a 499. A warm rerun took 3.6 s for the whole journey. A flash sale straight after a deploy would hit this, so a warm-up step or a readiness gate that exercises the hold path is worth adding.
+- **Cold-start hold latency: not reproducible.** During the audit the first hold after the stack started took more than 20 s and nginx logged a 499, but that run shared the host with Testcontainers ITs and image rebuilds. Remeasured on an otherwise idle host ([evidence](hardening/evidence/cold-start-hold-latency.txt)), the first hold after restarting booking and catalog, all app services, or the whole stack takes **0.4–0.7 s**, then about 40 ms warm. That's JIT and connection warm-up, not a defect.
 
 ## What it would take to close the gaps
 
