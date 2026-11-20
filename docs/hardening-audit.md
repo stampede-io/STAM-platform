@@ -24,7 +24,7 @@ Jira bug:
 | A non-JSON record blocks a consumer's partition forever (no `ErrorHandlingDeserializer` anywhere) | High | **Fixed** in [STAM-452](https://puliththewmika-dev.atlassian.net/browse/STAM-452): all five consumer services |
 | Identity's login form has CSRF disabled: a cross-site `POST /login` signs the victim in as the attacker | Medium | **Fixed** in [STAM-453](https://puliththewmika-dev.atlassian.net/browse/STAM-453) |
 | Compose never gave catalog `JWK_SET_URI`, so every catalog request carrying a bearer token got 401 | Medium | **Fixed** in this PR (`compose-dev/docker-compose.yml`) |
-| The frontend's nginx resolves `gateway` once at startup and returns 502 after the gateway container is recreated | Low (compose only) | Open, see AC3 |
+| The frontend's nginx resolves `gateway` once at startup and returns 502 after the gateway container is recreated | Low (compose only) | **Fixed** in [STAM-455](https://puliththewmika-dev.atlassian.net/browse/STAM-455) |
 
 ---
 
@@ -66,7 +66,7 @@ Jira bug:
 | Restore drill | 🟡 | [`runbook.md` §Postgres backup + restore drill](runbook.md#postgres-backup--restore-drill-stam-59): on kind (2026-10-13) I dumped the live `catalog_db`, restored it into a scratch pod, and row counts matched (`venues` 2 = 2, `seats` 3 = 3). The Azure Blob download step has never run, because no backup has landed in Blob yet (needs `az login` and `setup-backup-blob.sh`). |
 
 Also observed while running AC3 locally:
-- **Frontend nginx DNS caching.** `STAM-frontend/nginx.conf` has `proxy_pass http://gateway:8080` with no `resolver`, so nginx keeps the gateway container's old IP after the gateway is recreated, and the SPA returns 502 until the frontend restarts. This only affects compose (the frontend isn't on the cluster). The fix is `resolver 127.0.0.11` plus a variable upstream.
+- **Frontend nginx DNS caching (fixed, [STAM-455](https://puliththewmika-dev.atlassian.net/browse/STAM-455)).** `STAM-frontend/nginx.conf` had `proxy_pass http://gateway:8080` with no `resolver`, so nginx kept the gateway container's old IP after the gateway was recreated, and the SPA returned 502 until the frontend restarted. It now uses Docker's DNS (`127.0.0.11`) and a variable upstream. Live: the gateway was recreated on a new IP and the SPA kept returning 200 without a frontend restart.
 - **Cold-start hold latency.** The first hold after the stack starts took more than 20 s (JIT, Hikari warm-up and the first Feign call to catalog), and nginx logged a 499. A warm rerun took 3.6 s for the whole journey. A flash sale straight after a deploy would hit this, so a warm-up step or a readiness gate that exercises the hold path is worth adding.
 
 ## What it would take to close the gaps
