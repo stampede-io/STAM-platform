@@ -359,7 +359,6 @@ From the STAM-71 hardening audit, [`docs/hardening-audit.md`](docs/hardening-aud
 **Open defects**
 - **Identity's signing key isn't set on the cluster yet** ([STAM-454](https://puliththewmika-dev.atlassian.net/browse/STAM-454)). Identity now loads `IDENTITY_RSA_PRIVATE_KEY` and derives the `kid` from the key, so a restart no longer makes validators reject new tokens. Until the key is sealed into `identity-db-secret` ([how](platform/sealed-secrets/README.md#identitys-jwt-signing-key-stam-454)), though, each identity pod start still invalidates tokens issued before it, and two replicas would sign with different keys.
 - **Only catalog and booking dead-letter.** Payment, identity and notification have no DLQ recoverer; `payments.commands.dlq` and `identity.audit.dlq` are never written. Payment and identity send to Kafka directly with no outbox (booking is the only outbox). Since STAM-452 a non-JSON record no longer stalls any consumer, but in those three services it is logged and skipped rather than kept.
-- **Cold-start latency.** The first hold after a fresh start takes more than 20 s.
 
 **Not yet proven on the real cluster.** These need `az login` against the k3s VM:
 - `kubectl auth can-i` for workload ServiceAccounts, and reading the applied NSG back from Azure. NSG rules and the non-root `securityContext` are proven from config and on kind only.
