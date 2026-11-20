@@ -357,7 +357,7 @@ Test coverage at M2 was two separate layers: 38 Playwright E2E specs exercise th
 From the STAM-71 hardening audit, [`docs/hardening-audit.md`](docs/hardening-audit.md), which links each item to its evidence. These are real gaps, not planned features.
 
 **Open defects**
-- **Login CSRF.** Identity disables CSRF on its form login, so a hostile page can sign a victim's browser in as the attacker.
+- **Identity's signing key changes on every restart** ([STAM-454](https://puliththewmika-dev.atlassian.net/browse/STAM-454)). It generates a fresh RSA key under the same `kid`, so the gateway, catalog and booking reject new tokens (401) until their JWKS cache expires or they restart. On the cluster, multiple identity replicas would sign with different keys.
 - **Identity ignores bearer tokens.** It has no resource-server filter chain, so its ADMIN-only role endpoint can't be called with a JWT. It's only reachable through a form-login session.
 - **Only catalog and booking dead-letter.** Payment, identity and notification have no DLQ recoverer; `payments.commands.dlq` and `identity.audit.dlq` are never written. Payment and identity send to Kafka directly with no outbox (booking is the only outbox). Since STAM-452 a non-JSON record no longer stalls any consumer, but in those three services it is logged and skipped rather than kept.
 - **Frontend nginx caches the gateway's IP** (compose only): recreating the gateway container gives the SPA 502s until the frontend restarts.

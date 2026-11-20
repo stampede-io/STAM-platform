@@ -55,6 +55,8 @@ const csrf = await fetch(`${GATEWAY}/login`, {
 const session = csrf.headers.getSetCookie().some((c) => c.startsWith('JSESSIONID='));
 const loc = csrf.headers.get('location') ?? '';
 const accepted = csrf.status === 302 && session && !loc.includes('error');
-console.log(`${accepted ? 'FINDING' : 'OK     '} cross-site POST /login with no CSRF token -> ${csrf.status} ${loc}${session ? ' + new session cookie' : ''}`);
+// A rejected POST can still set JSESSIONID (the anonymous session holding the
+// CSRF token), so only call out the cookie when the login was accepted.
+console.log(`${accepted ? 'FINDING' : 'OK     '} cross-site POST /login with no CSRF token -> ${csrf.status} ${loc}${accepted ? ' + authenticated session cookie' : '(rejected)'}`);
 
 process.exit(ok ? 0 : 1);
