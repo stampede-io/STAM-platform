@@ -1,4 +1,4 @@
-# poison-message-drill.sh on compose-dev, 2026-11-20
+# poison-message-drill.sh on compose-dev, 2026-11-20, BEFORE STAM-452
 === 1. deserializable poison on payments.events
   14:46:54.488 Received PaymentAuthorized for reservation=ffec437a-c879-4691-a7d0-ccd2d736fbb5
   14:46:55.495 Record in retry and not yet recovered
