@@ -24,12 +24,9 @@ console.log(`token for ${email}, roles=${JSON.stringify(role)}`);
 const checks = [
   ['GET  /api/v1/venues (public read)', 'GET', '/api/v1/venues', null, (s) => s === 200],
   ['POST /api/v1/venues as USER', 'POST', '/api/v1/venues', { name: 'x', city: 'y' }, (s) => s === 403],
-  // identity has no bearer-token chain: a JWT is ignored and the caller is
-  // treated as anonymous, so the deny is a 302 to /login, not a 403. Still a
-  // deny, recorded in docs/hardening-audit.md as a finding (an ADMIN can't use
-  // this endpoint with a JWT either).
-  ['PUT  /api/v1/users/{id}/role as USER', 'PUT', '/api/v1/users/00000000-0000-0000-0000-000000000000/role', { role: 'ADMIN' },
-    (s, loc) => s === 403 || (s === 302 && loc.endsWith('/login'))],
+  // STAM-456: identity's API is a JWT resource server now, so a USER token
+  // gets a real 403 here (it used to be ignored: a 302 to /login).
+  ['PUT  /api/v1/users/{id}/role as USER', 'PUT', '/api/v1/users/00000000-0000-0000-0000-000000000000/role', { role: 'ADMIN' }, (s) => s === 403],
 ];
 let ok = true;
 for (const [label, method, path, body, expect] of checks) {
@@ -37,7 +34,7 @@ for (const [label, method, path, body, expect] of checks) {
     method, headers: auth, body: body && JSON.stringify(body), redirect: 'manual',
   });
   const loc = res.headers.get('location') ?? '';
-  const pass = expect(res.status, loc);
+  const pass = expect(res.status);
   ok &&= pass;
   console.log(`${pass ? 'OK  ' : 'FAIL'} ${label} -> ${res.status}${loc ? ` ${loc}` : ''}`);
 }
