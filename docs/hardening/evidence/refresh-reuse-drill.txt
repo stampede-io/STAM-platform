@@ -1,0 +1,6 @@
+# run 2026-11-20T14:49:38Z on compose-dev
+1. PKCE login            -> refresh token RT1 cIXlvk_O0asw…
+2. refresh with RT1      -> 200, rotated to RT2 zGqnkjfkIVuG…
+3. REPLAY RT1 (stolen)   -> 401, cookie cleared
+4. legit RT2 after replay -> 401 (family revoked if 401)
+PASS: reuse detected, family revoked

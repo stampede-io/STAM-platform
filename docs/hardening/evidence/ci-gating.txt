@@ -1,0 +1,53 @@
+# CI gating: step outcomes from the org reusable workflow (service-ci.yml), via gh run view --json jobs
+
+## STAM-booking run 44749128866  https://github.com/stampede-io/STAM-booking/actions/runs/44749128866
+  SUCCESS	TruffleHog secret scan
+  FAILURE	Trivy image scan
+  SKIPPED	Push image to GHCR
+  SKIPPED	Package and push Helm chart to GHCR (STAM-51 AC1)
+  SKIPPED	Get pushed image digest
+  SUCCESS	Post Trivy image scan
+
+## STAM-booking run 44751563516  https://github.com/stampede-io/STAM-booking/actions/runs/44751563516
+  SUCCESS	TruffleHog secret scan
+  SUCCESS	Trivy image scan
+  SKIPPED	Push image to GHCR
+  SKIPPED	Package and push Helm chart to GHCR (STAM-51 AC1)
+  SKIPPED	Get pushed image digest
+  SUCCESS	Post Trivy image scan
+
+## STAM-gateway run 44716506377  https://github.com/stampede-io/STAM-gateway/actions/runs/44716506377
+  SUCCESS	TruffleHog secret scan
+  SUCCESS	Trivy image scan
+  SKIPPED	Push image to GHCR
+  SKIPPED	Package and push Helm chart to GHCR (STAM-51 AC1)
+  SKIPPED	Get pushed image digest
+  SUCCESS	Post Trivy image scan
+
+## STAM-catalog run 38396942522  https://github.com/stampede-io/STAM-catalog/actions/runs/38396942522
+  SUCCESS	TruffleHog secret scan
+  FAILURE	Trivy image scan
+  SKIPPED	Log in to GHCR
+  SKIPPED	Push image to GHCR
+  SUCCESS	Post Trivy image scan
+
+## Trivy table that failed STAM-booking run 44749128866
+
+Total: 2 (HIGH: 2, CRITICAL: 0)
+│ org.xerial.snappy:snappy-java (app.jar) │ CVE-2026-108106 │ HIGH     │ fixed  │ 1.1.10.7          │ 1.1.10.9      │ org.xerial.snappy/snappy-jav
+│                                         │ CVE-2026-93451  │          │        │                   │               │ org.xerial/snappy-java: snap
+## STAM-gateway run 38480489581 (push to main)  https://github.com/stampede-io/STAM-gateway/actions/runs/38480489581
+  SUCCESS	TruffleHog secret scan
+  SUCCESS	Trivy image scan
+  SUCCESS	Push image to GHCR
+  SUCCESS	Package and push Helm chart to GHCR (STAM-51 AC1)
+  SUCCESS	Get pushed image digest
+  SUCCESS	Post Trivy image scan
+## STAM-gateway run 32546696397 (push to main)  https://github.com/stampede-io/STAM-gateway/actions/runs/32546696397
+  SUCCESS	TruffleHog secret scan
+  SUCCESS	Trivy image scan
+  SUCCESS	Log in to GHCR
+  SUCCESS	Push image to GHCR
+  SUCCESS	Post Push image to GHCR
+  SUCCESS	Post Log in to GHCR
+  SUCCESS	Post Trivy image scan

@@ -1,0 +1,11 @@
+# saga-crash-drill.sh on compose-dev, 2026-11-20
+20:11:12 reservation 1d190bff-bcc7-4846-a748-eef8f3271d02 held, payment method set
+20:11:12 >>> stop payment
+20:11:14 submit-payment -> 202
+20:11:16 before crash: saga PAYMENT_REQUESTED/EMIT_AUTHORIZE_PAYMENT, AuthorizePayment acked by Kafka: 1
+20:11:17 >>> kill -9 booking (saga in flight)
+20:11:18 >>> start payment while booking is dead
+20:11:47 >>> start booking
+20:12:22 after restart: saga COMPLETED/RESERVATION_CONFIRMED (rows: 1); reservation CONFIRMED
+=== Result
+PASS: the saga resumed after kill -9 and confirmed the reservation

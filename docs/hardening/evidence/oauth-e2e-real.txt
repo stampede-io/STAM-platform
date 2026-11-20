@@ -1,0 +1,6 @@
+# run 2026-11-20T14:51:38Z, npm run test:e2e:real against compose-dev (no page.route mocks)
+> stampede-frontend@0.1.0 test:e2e:real
+> cross-env RUN_REAL_E2E=1 playwright test --project=real
+Running 1 test using 1 worker
+[1/1] [real] › e2e\real\journey.spec.ts:18:3 › real SPA → gateway journey (no mocks) › register → login → seat map → hold a seat
+  1 passed (6.8s)
