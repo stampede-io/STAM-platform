@@ -5,11 +5,12 @@
 #     reservation that doesn't exist) on payments.events. Booking must retry it
 #     with exponential backoff (1 s, 2 s, 4 s) and then route it to
 #     payments.events.dlq.
-#  2. A record that isn't JSON at all on reservations.events. This is STAM-452:
-#     catalog and notification use a bare JsonDeserializer, so the record never
-#     reaches the error handler and the partition stalls. The drill reports the
-#     lag, then skips the record by resetting both groups' offsets, so the
-#     stack is usable again afterwards.
+#  2. A record that isn't JSON at all on reservations.events (STAM-452). Since
+#     the fix, catalog dead-letters the original bytes and notification skips
+#     the record, so both groups stay at lag 0. Before it, the record never
+#     reached the error handler and the partition stalled; if that ever comes
+#     back, the drill reports the lag and resets only the stuck groups' offsets
+#     past the record, so the stack is usable again afterwards.
 #
 # usage, from STAM-platform/:  bash tools/hardening/poison-message-drill.sh
 set -euo pipefail
