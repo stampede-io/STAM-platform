@@ -18,7 +18,11 @@ dc() { MSYS_NO_PATHCONV=1 docker compose "$@"; }
 kafka() { dc exec -T kafka /opt/kafka/bin/"$@"; }
 produce() { kafka kafka-console-producer.sh --bootstrap-server localhost:9092 --topic "$1" --property parse.key=true --property key.separator='|'; }
 in_dlq() { kafka kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic "$1" --from-beginning --timeout-ms 6000 --property print.key=true 2>/dev/null | grep -c "$2" || true; }
-lag() { kafka kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group "$1" 2>/dev/null | awk -v p="$2" '$2=="reservations.events" && $3==p {print $6}'; }
+group_col() { kafka kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group "$1" 2>/dev/null | awk -v p="$2" -v c="$3" '$2=="reservations.events" && $3==p {print $c}'; }
+lag() { group_col "$1" "$2" 6; }
+committed() { group_col "$1" "$2" 4; }
+# If the run is cut short mid-recovery, don't leave the consumers stopped.
+trap 'dc start catalog notification >/dev/null 2>&1 || true' EXIT
 uuid() { node -e 'console.log(crypto.randomUUID())'; }
 
 echo "=== 1. deserializable poison on payments.events"
@@ -37,19 +41,28 @@ echo "$R2|not-json-at-all" | produce reservations.events
 sleep 15
 P=$(kafka kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic reservations.events --from-beginning --timeout-ms 6000 \
       --property print.key=true --property print.partition=true --property print.offset=true 2>/dev/null | grep "$R2" | head -1)
+if [ -z "$P" ]; then echo "could not find the poison record on the topic; not touching any offsets"; exit 1; fi
 PART=$(sed -E 's/.*Partition:([0-9]+).*/\1/' <<<"$P"); OFF=$(sed -E 's/.*Offset:([0-9]+).*/\1/' <<<"$P")
 c_lag=$(lag catalog-availability-projector "$PART"); n_lag=$(lag notification-service "$PART")
 loops=$(dc logs catalog --since 10s 2>/dev/null | grep -c 'Consumer exception' || true)
 d2=$(in_dlq reservations.events.dlq "$R2")
 echo "partition $PART offset $OFF: catalog lag $c_lag, notification lag $n_lag, catalog 'Consumer exception' lines in 10 s: $loops, in DLQ: $d2"
 
-echo ">>> recovering: skip offset $OFF for both groups"
-dc stop catalog notification >/dev/null 2>&1
+# Only move a group that is actually parked on the poison record. Resetting a
+# group that already got past it would rewind it and replay later events.
+stuck=()
 for g in catalog-availability-projector notification-service; do
-  kafka kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group "$g" \
-    --topic "reservations.events:$PART" --reset-offsets --to-offset $((OFF + 1)) --execute >/dev/null 2>&1
+  [ "$(committed "$g" "$PART")" = "$OFF" ] && stuck+=("$g")
 done
-dc up -d --wait catalog notification >/dev/null 2>&1
+if [ ${#stuck[@]} -gt 0 ]; then
+  echo ">>> recovering: skip offset $OFF on partition $PART for ${stuck[*]}"
+  dc stop catalog notification >/dev/null 2>&1
+  for g in "${stuck[@]}"; do
+    kafka kafka-consumer-groups.sh --bootstrap-server localhost:9092 --group "$g" \
+      --topic "reservations.events:$PART" --reset-offsets --to-offset $((OFF + 1)) --execute >/dev/null 2>&1
+  done
+  dc up -d --wait catalog notification >/dev/null 2>&1
+fi
 echo "after recovery: catalog lag $(lag catalog-availability-projector "$PART"), notification lag $(lag notification-service "$PART")"
 
 echo "=== Result"

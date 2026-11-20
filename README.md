@@ -372,7 +372,7 @@ From the STAM-71 hardening audit, [`docs/hardening-audit.md`](docs/hardening-aud
 
 **Not built**
 - **No expand → migrate → contract migration yet.** Every schema change so far is additive, so zero-downtime renames and drops are untested.
-- The M2 load report's 429 counts were never filled in. The audit's k6 burst ([evidence](docs/hardening/evidence/rate-limit-burst-k6.txt)) measures them: booking allows exactly its 20-request burst, identity its 10.
+- The M2 load report's 429 counts were never filled in. The audit's k6 burst ([evidence](docs/hardening/evidence/rate-limit-burst-k6.txt)) measures them: booking allows exactly its 20-request burst, then 429s; identity allows its 10-request burst plus its 5/s refill over the run.
 
 ## License
 
