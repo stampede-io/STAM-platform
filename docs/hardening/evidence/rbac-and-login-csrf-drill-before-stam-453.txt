@@ -1,4 +1,4 @@
-# run 2026-11-20T14:49:39Z on compose-dev
+# run 2026-11-20T14:49:39Z on compose-dev, BEFORE STAM-453
 token for rbac-1795186179412@stampede.test, roles=["USER"]
 OK   GET  /api/v1/venues (public read) -> 200
 OK   POST /api/v1/venues as USER -> 403
