@@ -346,11 +346,33 @@ The same `correlationId` appears in booking log lines (saga started, `PaymentAut
 
 **Milestone 2 (tag: `v0.2.0`) — complete.** Secured stack: OAuth 2.1 identity service, API gateway with JWT validation and Redis rate limiting, Stripe test-mode payments, notification emails, React SPA with a PKCE checkout flow. Built on the zero-oversell core from `v0.1.0`. All backend Testcontainers integration tests green across seven repos.
 
-Test coverage is two separate layers today: 38 Playwright E2E specs exercise the SPA against **mocked** API responses, and a secured k6 flash-sale drives the **gateway and backend** with real JWTs (0 oversells at 1,000 VUs). A real browser-through-gateway test is still open — the SPA→gateway wiring has a known bug (dev proxy port, unrouted auth paths, frontend not in compose), so "full browser journey verified end to end" is **not** yet an accurate claim.
+Test coverage at M2 was two separate layers: 38 Playwright E2E specs exercise the SPA against **mocked** API responses, and a secured k6 flash-sale drives the **gateway and backend** with real JWTs (0 oversells at 1,000 VUs). The real browser-through-gateway journey was added later (STAM-440): `npm run test:e2e:real` in `STAM-frontend` drives register → PKCE login → seat map → hold with no mocks.
 
 **Milestone 1 (tag: `v0.1.0`) — complete.** Compose-based deploy, catalog + booking + payment + Kafka + Redis + Postgres. Full hold → pay → confirm saga with compensation and crash recovery.
 
-**In progress — Sprint 3 (`v0.3.0`):** Kubernetes-native deployment — raw manifests on kind, Terraform for Azure VM + k3s, Helm umbrella chart, shared Postgres and Redis on cluster, Sealed Secrets, ArgoCD app-of-apps. Eureka and Config Server are deleted (STAM-56), fulfilling ADR-0004.
+**Milestone 3 (tag: `v0.3.0`, 2026-10-14):** Kubernetes-native deployment — raw manifests on kind, Terraform for Azure VM + k3s, Helm umbrella chart, shared Postgres and Redis on cluster, Sealed Secrets, ArgoCD app-of-apps. Eureka and Config Server are deleted (STAM-56), fulfilling ADR-0004. Some Sprint 3 stories still need the live k3s cluster to close; see below.
+
+## Known limitations
+
+From the STAM-71 hardening audit, [`docs/hardening-audit.md`](docs/hardening-audit.md), which links each item to its evidence. These are real gaps, not planned features.
+
+**Open defects**
+- **A non-JSON Kafka record stalls its partition** ([STAM-452](https://puliththewmika-dev.atlassian.net/browse/STAM-452)). No consumer wraps its `JsonDeserializer` in `ErrorHandlingDeserializer`, so undeserializable bytes never reach the error handler or the DLQ. You have to reset offsets by hand. Records that deserialize but fail *are* retried and dead-lettered correctly.
+- **Login CSRF.** Identity disables CSRF on its form login, so a hostile page can sign a victim's browser in as the attacker.
+- **Identity ignores bearer tokens.** It has no resource-server filter chain, so its ADMIN-only role endpoint can't be called with a JWT. It's only reachable through a form-login session.
+- **Only catalog and booking dead-letter.** Payment, identity and notification have no DLQ recoverer; `payments.commands.dlq` and `identity.audit.dlq` are never written. Payment and identity send to Kafka directly with no outbox (booking is the only outbox).
+- **Frontend nginx caches the gateway's IP** (compose only): recreating the gateway container gives the SPA 502s until the frontend restarts.
+- **Cold-start latency.** The first hold after a fresh start takes more than 20 s.
+
+**Not yet proven on the real cluster.** These need `az login` against the k3s VM:
+- `kubectl auth can-i` for workload ServiceAccounts, and reading the applied NSG back from Azure. NSG rules and the non-root `securityContext` are proven from config and on kind only.
+- Canary auto-rollback and blue-green promotion were drilled on kind against stand-in pods, not the real services, and neither is screen-recorded.
+- A `git revert` rollback through ArgoCD has never been timed end to end.
+- The Postgres restore drill ran on kind; the Azure Blob download step has never run, because no backup has landed in Blob yet.
+
+**Not built**
+- **No expand → migrate → contract migration yet.** Every schema change so far is additive, so zero-downtime renames and drops are untested.
+- The M2 load report's 429 counts were never filled in. The audit's k6 burst ([evidence](docs/hardening/evidence/rate-limit-burst-k6.txt)) measures them: booking allows exactly its 20-request burst, then 429s; identity allows its 10-request burst plus its 5/s refill over the run.
 
 ## License
 

@@ -1,0 +1,21 @@
+# run 2026-11-20T14:49:55Z on compose-dev, k6 v2.2.0
+booking_per_user ✓ [ 100% ] 20 VUs   00.2s/10s  60/60 shared iters
+booking_per_user ✓ [ 100% ] 20 VUs   00.2s/10s  60/60 shared iters
+booking_per_user ✓ [ 100% ] 20 VUs   00.2s/10s  60/60 shared iters
+booking_per_user ✓ [ 100% ] 20 VUs  00.2s/10s  60/60 shared iters
+    allowed_non_429{limiter:booking}
+    ✓ 'count>=10' count=20
+    allowed_non_429{limiter:identity}
+    ✓ 'count>=5' count=15
+    rate_limited_429{limiter:booking}
+    ✓ 'count>0' count=40
+    rate_limited_429{limiter:identity}
+    ✓ 'count>0' count=45
+    allowed_non_429................: 35     7.322844/s
+      { limiter:booking }..........: 20     4.184482/s
+      { limiter:identity }.........: 15     3.138362/s
+    rate_limited_429...............: 85     17.784049/s
+      { limiter:booking }..........: 40     8.368964/s
+      { limiter:identity }.........: 45     9.415085/s
+booking_per_user ✓ [ 100% ] 20 VUs  00.2s/10s  60/60 shared iters
+identity_per_ip  ✓ [ 100% ] 20 VUs  01.8s/10s  60/60 shared iters
