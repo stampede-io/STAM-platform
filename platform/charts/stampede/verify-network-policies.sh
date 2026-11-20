@@ -21,9 +21,10 @@ set -euo pipefail
 NAMESPACE="${1:-apps}"
 TIMEOUT=3
 
-trap 'kubectl delete pod -n "$NAMESPACE" gateway-standin catalog-standin booking-standin notification-standin attacker-standin --ignore-not-found >/dev/null 2>&1; kubectl delete pod -n ingress-nginx ingress-nginx-standin --ignore-not-found >/dev/null 2>&1' EXIT
+trap 'kubectl delete pod -n "$NAMESPACE" gateway-standin catalog-standin booking-standin notification-standin attacker-standin mailhog-standin --ignore-not-found >/dev/null 2>&1; kubectl delete pod -n ingress-nginx ingress-nginx-standin --ignore-not-found >/dev/null 2>&1; kubectl delete pod -n monitoring alertmanager-standin grafana-standin --ignore-not-found >/dev/null 2>&1' EXIT
 
 kubectl create namespace ingress-nginx >/dev/null 2>&1 || true
+kubectl create namespace monitoring >/dev/null 2>&1 || true
 
 standin() {
   local name="$1" ns="$2" label="$3"
@@ -36,12 +37,20 @@ standin booking-standin "$NAMESPACE" app.kubernetes.io/name=booking
 standin notification-standin "$NAMESPACE" app.kubernetes.io/name=notification
 standin attacker-standin "$NAMESPACE" app=attacker
 standin ingress-nginx-standin ingress-nginx app=ingress-nginx-standin
+# STAM-450: the SMTP sink and its second sender, Alertmanager, which lives
+# in the monitoring namespace. Needs the chart's infra.mailhog.enabled.
+standin mailhog-standin "$NAMESPACE" app=mailhog
+standin alertmanager-standin monitoring app.kubernetes.io/name=alertmanager
+# monitoring has no egress policy, so this one tests mailhog-ingress itself
+standin grafana-standin monitoring app.kubernetes.io/name=grafana
 
 kubectl wait --for=condition=Ready pod --all -n "$NAMESPACE" --timeout=60s >/dev/null
 kubectl wait --for=condition=Ready pod --all -n ingress-nginx --timeout=60s >/dev/null
+kubectl wait --for=condition=Ready pod alertmanager-standin grafana-standin -n monitoring --timeout=60s >/dev/null
 
 CATALOG_IP=$(kubectl get pod catalog-standin -n "$NAMESPACE" -o jsonpath='{.status.podIP}')
 GATEWAY_IP=$(kubectl get pod gateway-standin -n "$NAMESPACE" -o jsonpath='{.status.podIP}')
+MAILHOG_IP=$(kubectl get pod mailhog-standin -n "$NAMESPACE" -o jsonpath='{.status.podIP}')
 
 # check SRC_POD PORT EXPECT("ALLOWED"|"BLOCKED") DESCRIPTION
 check() {
@@ -72,5 +81,10 @@ check booking-standin "$NAMESPACE" "$CATALOG_IP" 8080 ALLOWED "booking -> catalo
 check notification-standin "$NAMESPACE" "$CATALOG_IP" 8080 BLOCKED "notification -> catalog (not gateway, not booking)"
 check attacker-standin "$NAMESPACE" "$GATEWAY_IP" 8080 BLOCKED "attacker -> gateway"
 check ingress-nginx-standin ingress-nginx "$GATEWAY_IP" 8080 ALLOWED "ingress-nginx -> gateway"
+check notification-standin "$NAMESPACE" "$MAILHOG_IP" 1025 ALLOWED "notification -> mailhog SMTP (STAM-450)"
+check alertmanager-standin monitoring "$MAILHOG_IP" 1025 ALLOWED "alertmanager (monitoring ns) -> mailhog SMTP (STAM-450)"
+check catalog-standin "$NAMESPACE" "$MAILHOG_IP" 1025 BLOCKED "catalog -> mailhog SMTP (not a sender)"
+check attacker-standin "$NAMESPACE" "$MAILHOG_IP" 1025 BLOCKED "attacker -> mailhog SMTP"
+check grafana-standin monitoring "$MAILHOG_IP" 1025 BLOCKED "grafana (monitoring ns, open egress) -> mailhog SMTP: mailhog-ingress must stop it"
 
 exit $fail

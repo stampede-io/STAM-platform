@@ -35,6 +35,20 @@ separate, later concern) and confirmed every NetworkPolicy edge with
 - attacker -> gateway: **blocked**
 - ingress-nginx -> gateway: **allowed** (AC1)
 
+STAM-450 (2026-11-20) added the SMTP edges, against the chart's own
+`infra/mailhog.yaml` + `network-policies/mailhog.yaml` rendered with
+`values-staging.yaml` into a `staging` namespace:
+
+- notification -> mailhog:1025: **allowed** (a real SMTP session from a
+  notification-labelled pod via the short name `mailhog` got `250 queued`)
+- alertmanager (monitoring ns) -> mailhog:1025: **allowed** (a real
+  `prom/alertmanager:v0.28.1` with `platform/monitoring/values.yaml`'s SMTP
+  block delivered a test alert to the inbox; the old block failed with
+  `'require_tls' is true (default)`)
+- catalog, an attacker pod, and grafana in `monitoring` -> mailhog: **blocked**
+
+Removing the two new policies turns both "allowed" checks into FAILs.
+
 Also verified a real built image (catalog, with the STAM-58 Helm
 `securityContext` applied: `runAsNonRoot`, `runAsUser: 1001`,
 `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]`, `/tmp`
