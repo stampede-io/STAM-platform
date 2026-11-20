@@ -53,6 +53,10 @@ services:
       DB_PASSWORD: ${CATALOG_DB_PASSWORD}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
+      # STAM-71: without this catalog fetches JWKS from its own localhost:8084,
+      # so every request carrying a bearer token 401'd (organizer writes, and
+      # public reads that happen to send one). The Helm chart already sets it.
+      JWK_SET_URI: http://identity:8080/oauth2/jwks
       HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
