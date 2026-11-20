@@ -118,6 +118,8 @@ services:
       DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       PAYMENT_FAILURE_RATE: ${PAYMENT_FAILURE_RATE}
+      # STAM-449: payment refuses every webhook (503) without it. Empty = disabled.
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
       interval: 10s
