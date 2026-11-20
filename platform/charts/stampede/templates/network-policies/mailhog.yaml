@@ -1,0 +1,50 @@
+{{- if .Values.infra.mailhog.enabled }}
+# STAM-450: default-deny-all would drop SMTP to Mailhog from both sides, the
+# same both-sides rule infra-ingress.yaml documents for Postgres and Redis.
+# Senders: notification (booking emails) and Alertmanager in the monitoring
+# namespace (alert emails). Nothing else may reach port 1025, and the 8025 UI
+# is reachable only through kubectl port-forward.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: notification-egress-smtp
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: notification
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mailhog
+      ports:
+        - protocol: TCP
+          port: 1025
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mailhog-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: mailhog
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: notification
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - protocol: TCP
+          port: 1025
+{{- end }}
