@@ -21,6 +21,10 @@ services:
       DB_USERNAME: ${IDENTITY_DB_USER}
       DB_PASSWORD: ${IDENTITY_DB_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # STAM-454: the JWT signing key. Set it and tokens survive identity
+      # restarts; leave it empty and identity generates one per start (its
+      # kid changes too, so validators refetch the JWKS rather than 401).
+      IDENTITY_RSA_PRIVATE_KEY: ${IDENTITY_RSA_PRIVATE_KEY:-}
       # OAuth redirect targets — must match the SPA's window.location.origin.
       CLIENT_REDIRECT_URI: http://localhost:5173/auth/callback
       CLIENT_POST_LOGOUT_REDIRECT_URI: http://localhost:5173
