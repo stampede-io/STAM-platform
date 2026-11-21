@@ -36,6 +36,10 @@ spec:
         - podSelector:
             matchLabels:
               job-name: postgres-init
+        # Nightly pg_dump (platform/backup/postgres-backup-cronjob.yaml).
+        - podSelector:
+            matchLabels:
+              app: postgres-backup
       ports:
         - protocol: TCP
           port: 5432

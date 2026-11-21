@@ -5,6 +5,11 @@
 # up the EC2 instance role through IMDSv2 (hop limit 2 in main.tf so a pod
 # can reach it), and that role may only read/write this one bucket.
 #
+# It runs in the chart's release namespace (staging for the demo), because
+# that's where the `postgres` Service and `postgres-admin-secret` live; a
+# Secret can't be read across namespaces. The chart's postgres-ingress
+# policy admits pods labelled app=postgres-backup.
+#
 # Apply with the two placeholders substituted from Terraform outputs:
 #   BACKUP_BUCKET=$(terraform -chdir=platform/terraform output -raw backup_bucket) \
 #   AWS_REGION=$(terraform -chdir=platform/terraform output -raw region) \
@@ -15,13 +20,16 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: postgres-backup
-  namespace: apps
+  namespace: staging
 spec:
   schedule: "0 2 * * *" # 02:00 UTC, AC1
   jobTemplate:
     spec:
       backoffLimit: 2
       template:
+        metadata:
+          labels:
+            app: postgres-backup
         spec:
           restartPolicy: OnFailure
           containers:
@@ -60,3 +68,45 @@ spec:
                       "/tmp/${DATE}_${db}.sql.gz" "s3://${BACKUP_BUCKET}/${DATE}_${db}.sql.gz"
                     echo "uploaded ${DATE}_${db}.sql.gz"
                   done
+---
+# The namespace is default-deny (chart: network-policies/default-deny.yaml),
+# and DNS is already allowed for every pod. This opens the rest of what the
+# job needs: Postgres in-namespace, IMDS for the role's credentials, and
+# HTTPS out for S3 and the Alpine package mirror. 169.254.169.254 is listed
+# on its own because the 443 rule below excludes link-local addresses.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-backup-egress
+  namespace: staging
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres-backup
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 80
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

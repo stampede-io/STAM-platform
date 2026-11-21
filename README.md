@@ -318,6 +318,10 @@ REGION=ap-south-1 ./bootstrap-state.sh   # prints the terraform init flags
 The state bucket can't live in the state it holds, so it's a plain
 `aws` script, and `terraform destroy` leaves it alone.
 
+On Windows, run these from **Git Bash**, not PowerShell: the apply's last
+step polls the node over SSH with a bash script, and from PowerShell
+`bash` can resolve to WSL's, which has no access to your SSH key.
+
 ```bash
 cd platform/terraform
 cp terraform.tfvars.example terraform.tfvars   # operator_ip, budget_email

@@ -6,6 +6,11 @@ resource "null_resource" "fetch_kubeconfig" {
   }
 
   provisioner "local-exec" {
+    # Without this, local-exec uses cmd.exe on Windows and the script below
+    # fails. Run terraform from Git Bash on Windows: from PowerShell, "bash"
+    # can resolve to WSL's, which has neither this path nor your SSH key.
+    interpreter = ["bash", "-c"]
+
     # cloud-init takes a while after the instance reports running. Poll for
     # the .k3s-ready marker (touched last in cloud-init.yaml) instead of a
     # fixed sleep, then scp the kubeconfig down. The <=10 min readiness
