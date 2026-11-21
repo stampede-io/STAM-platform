@@ -7,7 +7,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: stampede-gateway
-  namespace: apps
+  # Must be the namespace ArgoCD deploys the gateway into: an Ingress
+  # backend can only name a Service in its own namespace. The demo runs
+  # the staging Application (STAM-gitops apps/staging).
+  namespace: staging
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/ssl-redirect: "true"

@@ -1,0 +1,54 @@
+{{- if .Values.infra.mailhog.enabled }}
+# STAM-450: the SMTP target notification (MAIL_HOST: mailhog, from its own
+# helm/values.yaml) and Alertmanager already point at. Same image compose-dev
+# runs, so the demo shows the same inbox. In-memory only: a restart empties
+# the inbox, which is fine for a test sink and why there is no PVC.
+# The web UI (8025) is deliberately not on the Ingress -- view it with
+#   kubectl port-forward -n <namespace> svc/mailhog 8025
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailhog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailhog
+  template:
+    metadata:
+      labels:
+        app: mailhog
+    spec:
+      containers:
+        - name: mailhog
+          image: {{ .Values.infra.mailhog.image }}
+          ports:
+            - name: smtp
+              containerPort: 1025
+            - name: http
+              containerPort: 8025
+          readinessProbe:
+            tcpSocket:
+              port: smtp
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailhog
+spec:
+  selector:
+    app: mailhog
+  ports:
+    - name: smtp
+      port: 1025
+      targetPort: smtp
+    - name: http
+      port: 8025
+      targetPort: http
+{{- end }}

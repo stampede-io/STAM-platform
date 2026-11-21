@@ -1,10 +1,11 @@
 terraform {
-  required_version = ">= 1.7.0"
+  # 1.10+ for the S3 backend's native lockfile (no DynamoDB table needed).
+  required_version = ">= 1.10.0"
 
   required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.100"
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -16,14 +17,22 @@ terraform {
     }
   }
 
-  backend "azurerm" {
-    # Partial config — the rest (resource_group_name, storage_account_name,
-    # container_name, key) is supplied via -backend-config at `terraform init`
-    # (see bootstrap/README.md). Terraform backend blocks can't reference
-    # variables, so this can't be filled in from terraform.tfvars.
+  backend "s3" {
+    # Partial config: bucket, key and region come from -backend-config at
+    # `terraform init` (bootstrap/bootstrap-state.sh prints the exact
+    # command). Backend blocks can't read variables.
+    use_lockfile = true
+    encrypt      = true
   }
 }
 
-provider "azurerm" {
-  features {}
+provider "aws" {
+  region = var.region
+
+  default_tags {
+    tags = {
+      Project = "stampede"
+      Purpose = "demo"
+    }
+  }
 }

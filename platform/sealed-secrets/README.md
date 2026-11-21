@@ -64,6 +64,29 @@ kubectl -n apps get sealedsecret my-secret   # SYNCED: True once decrypted
 kubectl -n apps get secret my-secret         # the real Secret, created by the controller
 ```
 
+## Identity's JWT signing key (STAM-454)
+
+Identity signs every access token with `IDENTITY_RSA_PRIVATE_KEY` (an RSA
+PKCS#8 key, base64). Without it, identity generates a key per pod start. Its
+`kid` is the key's thumbprint, so the gateway, catalog and booking refetch the
+JWKS and keep working, but every token issued before a restart, a rollout or
+the demo-reset CronJob stops validating. Two replicas would also sign with two
+different keys. Give the cluster one key:
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+  | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0 \
+  | kubeseal --raw --controller-name sealed-secrets-controller \
+      --controller-namespace kube-system --namespace <ns> --name identity-db-secret
+```
+
+Add the result as `IDENTITY_RSA_PRIVATE_KEY` under `encryptedData` of the
+`identity-db-secret` SealedSecret. Identity already loads that Secret through
+`envFrom`, so no chart change is needed. Keep the pipe in one shell: the
+plaintext key never touches disk. Identity logs `Signing JWTs with the
+configured key, kid=…` at startup when it's picked up, and refuses to start
+if the value isn't a valid PKCS#8 key.
+
 ## Verified live (kind, 2026-10-07)
 
 - Controller installed via the OCI chart, `1/1 Running` in `kube-system`.

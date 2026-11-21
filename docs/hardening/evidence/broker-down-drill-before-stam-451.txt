@@ -1,0 +1,15 @@
+# broker-down-drill.sh on compose-dev, 2026-11-20, BEFORE STAM-451 (booking from Dev @ that morning)
+=== Phase A: Kafka down, booking stays up
+16:23:53 >>> stop kafka
+16:23:58 holds accepted with Kafka DOWN: 8/8
+16:23:58 >>> start kafka
+16:24:37 SeatsHeld events on the topic: 8/8; catalog HELD: 8
+=== Phase B: Kafka down, booking SIGKILLed before Kafka returns
+16:24:37 >>> stop kafka
+16:24:42 holds accepted with Kafka DOWN: 4/4; outbox rows marked published while Kafka is DOWN: 4
+16:24:42 >>> kill -9 booking (crash while Kafka is down)
+16:24:43 >>> start kafka, start booking
+16:25:38 SeatsHeld events on the topic: 0/4; outbox still says published: 4
+=== Result
+A PASS: no hold refused, all events delivered after recovery
+B FINDING: 4 event(s) lost although the outbox marks them published

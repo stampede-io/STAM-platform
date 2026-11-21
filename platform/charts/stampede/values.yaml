@@ -75,6 +75,11 @@ infra:
     enabled: true
     image: redis:7-alpine
     storage: 8Gi
+  # STAM-450: test SMTP sink for notification and Alertmanager (option A).
+  # On everywhere by default, prod included -- see values-prod.yaml for why.
+  mailhog:
+    enabled: true
+    image: mailhog/mailhog:v1.0.1
   postgres:
     image: postgres:16-alpine
     storage: 64Gi

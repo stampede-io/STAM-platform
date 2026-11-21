@@ -1,149 +1,210 @@
+# Demo cluster (ADR-0008): one EC2 instance running single-node k3s, in the
+# account's default VPC. Built to be destroyed after the demo, so nothing
+# here is HA and the backup bucket is force_destroy.
+
+locals {
+  ssh_user = "ubuntu" # Canonical's AMIs create this user; cloud-init uses it too
+}
+
 resource "random_string" "suffix" {
   length  = 6
   special = false
   upper   = false
 }
 
-resource "azurerm_resource_group" "stampede" {
-  name     = "rg-stampede"
-  location = var.location
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
 }
 
 # --- Networking ---------------------------------------------------------
 
-resource "azurerm_virtual_network" "stampede" {
-  name                = "vnet-stampede"
-  address_space       = ["10.20.0.0/16"]
-  location            = azurerm_resource_group.stampede.location
-  resource_group_name = azurerm_resource_group.stampede.name
-}
+# 6443 (k3s API) is deliberately absent: security groups deny inbound by
+# default. kubectl from off-box goes through the SSH tunnel (ssh_command
+# output). A port scan sees exactly 80, 443, and 22 from operator_ip.
+resource "aws_security_group" "stampede" {
+  name        = "stampede"
+  description = "k3s demo node: HTTP/HTTPS public, SSH operator only"
+  vpc_id      = data.aws_vpc.default.id
 
-resource "azurerm_subnet" "stampede" {
-  name                 = "subnet-stampede"
-  resource_group_name  = azurerm_resource_group.stampede.name
-  virtual_network_name = azurerm_virtual_network.stampede.name
-  address_prefixes     = ["10.20.1.0/24"]
-}
-
-resource "azurerm_network_security_group" "stampede" {
-  name                = "nsg-stampede"
-  location            = azurerm_resource_group.stampede.location
-  resource_group_name = azurerm_resource_group.stampede.name
-
-  # 6443 (k3s API server) is deliberately absent — NSGs deny by default, and
-  # it stays that way. kubectl access from off-box goes through the SSH
-  # tunnel described in platform/docs/ (ssh_command output), never a direct
-  # rule here. AC5: a port scan sees exactly 80, 443, 22 (from operator_ip).
-
-  security_rule {
-    name                       = "allow-http"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "80"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
+  ingress {
+    description = "HTTP (Let's Encrypt HTTP-01 and the redirect to HTTPS)"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  security_rule {
-    name                       = "allow-https"
-    priority                   = 110
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "443"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
+  ingress {
+    description = "HTTPS"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  security_rule {
-    name                       = "allow-ssh-operator-only"
-    priority                   = 120
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = var.operator_ip
-    destination_address_prefix = "*"
+  ingress {
+    description = "SSH from the operator only"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.operator_ip]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
-resource "azurerm_subnet_network_security_group_association" "stampede" {
-  subnet_id                 = azurerm_subnet.stampede.id
-  network_security_group_id = azurerm_network_security_group.stampede.id
+resource "aws_key_pair" "stampede" {
+  key_name   = "stampede-${random_string.suffix.result}"
+  public_key = file(var.ssh_public_key_path)
 }
 
-resource "azurerm_public_ip" "stampede" {
-  name                = "pip-stampede"
-  location            = azurerm_resource_group.stampede.location
-  resource_group_name = azurerm_resource_group.stampede.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
+# --- IAM: the backup CronJob's only credential ---------------------------
+
+# The node's instance role, scoped to the backup bucket alone. The backup
+# pod reaches it through IMDS, so no access key exists anywhere: not in a
+# Secret, not in Terraform state.
+resource "aws_iam_role" "node" {
+  name = "stampede-node-${random_string.suffix.result}"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
 }
 
-resource "azurerm_network_interface" "stampede" {
-  name                = "nic-stampede"
-  location            = azurerm_resource_group.stampede.location
-  resource_group_name = azurerm_resource_group.stampede.name
+resource "aws_iam_role_policy" "backup_bucket" {
+  name = "backup-bucket-only"
+  role = aws_iam_role.node.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject"]
+        Resource = "${aws_s3_bucket.backups.arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.backups.arn
+      },
+    ]
+  })
+}
 
-  ip_configuration {
-    name                          = "internal"
-    subnet_id                     = azurerm_subnet.stampede.id
-    private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.stampede.id
-  }
+resource "aws_iam_instance_profile" "node" {
+  name = aws_iam_role.node.name
+  role = aws_iam_role.node.name
 }
 
 # --- Compute -------------------------------------------------------------
 
-resource "azurerm_linux_virtual_machine" "stampede" {
-  name                = "vm-stampede"
-  location            = azurerm_resource_group.stampede.location
-  resource_group_name = azurerm_resource_group.stampede.name
-  size                = "Standard_B2ms"
-  admin_username      = var.admin_username
-  network_interface_ids = [
-    azurerm_network_interface.stampede.id,
-  ]
+resource "aws_instance" "stampede" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type
+  key_name               = aws_key_pair.stampede.key_name
+  vpc_security_group_ids = [aws_security_group.stampede.id]
+  iam_instance_profile   = aws_iam_instance_profile.node.name
 
-  admin_ssh_key {
-    username   = var.admin_username
-    public_key = file(var.ssh_public_key_path)
+  # IMDSv2 only. Hop limit 2 because a pod's request crosses one extra hop
+  # (the CNI bridge) before reaching the instance; with 1 the backup pod
+  # can't get the role's credentials.
+  metadata_options {
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
   }
 
-  # Password auth stays off — SSH is key-only (AC5), and disabling this is
-  # what actually enforces that at the VM level, not just the NSG rule.
-  disable_password_authentication = true
-
-  os_disk {
-    caching              = "ReadWrite"
-    storage_account_type = "StandardSSD_LRS"
-    disk_size_gb         = 64
+  root_block_device {
+    volume_type = "gp3"
+    volume_size = 64
+    encrypted   = true
   }
 
-  source_image_reference {
-    publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts-gen2"
-    version   = "latest"
-  }
+  user_data = templatefile("${path.module}/cloud-init.yaml", {
+    admin_username = local.ssh_user
+  })
 
-  custom_data = base64encode(templatefile("${path.module}/cloud-init.yaml", {
-    admin_username = var.admin_username
-  }))
+  tags = { Name = "stampede-k3s" }
+}
+
+# A stable address for the DuckDNS record; survives a stop/start.
+resource "aws_eip" "stampede" {
+  instance = aws_instance.stampede.id
+  domain   = "vpc"
 }
 
 # --- Storage ---------------------------------------------------------------
 
-resource "azurerm_storage_account" "stampede" {
-  name                     = "ststampede${random_string.suffix.result}"
-  resource_group_name      = azurerm_resource_group.stampede.name
-  location                 = azurerm_resource_group.stampede.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
-  access_tier              = "Cool"
+resource "aws_s3_bucket" "backups" {
+  bucket        = "stampede-backups-${random_string.suffix.result}"
+  force_destroy = true # demo: `terraform destroy` must leave nothing behind
+}
+
+resource "aws_s3_bucket_public_access_block" "backups" {
+  bucket                  = aws_s3_bucket.backups.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# STAM-59 AC5: dumps older than 30 days delete themselves.
+resource "aws_s3_bucket_lifecycle_configuration" "backups" {
+  bucket = aws_s3_bucket.backups.id
+
+  rule {
+    id     = "expire-backups-after-30-days"
+    status = "Enabled"
+    filter {}
+    expiration {
+      days = 30
+    }
+  }
+}
+
+# --- Cost guard ----------------------------------------------------------
+
+# include_credit = false: with credits counted, "actual cost" reads ~$0
+# until the credits are gone, so the alert would only fire once the money
+# is already real. This tracks gross spend against the credit balance.
+resource "aws_budgets_budget" "stampede" {
+  name         = "stampede-demo"
+  budget_type  = "COST"
+  limit_amount = tostring(var.budget_limit_usd)
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  cost_types {
+    include_credit = false
+    include_refund = false
+  }
+
+  dynamic "notification" {
+    for_each = [50, 80, 100]
+    content {
+      comparison_operator        = "GREATER_THAN"
+      threshold                  = notification.value
+      threshold_type             = "PERCENTAGE"
+      notification_type          = "ACTUAL"
+      subscriber_email_addresses = [var.budget_email]
+    }
+  }
 }

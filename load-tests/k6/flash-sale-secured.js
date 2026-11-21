@@ -3,7 +3,7 @@
 // Full journey through the gateway with JWT auth:
 //   1. POST /api/v1/users/register     (register)
 //   2. GET  /oauth2/authorize           (PKCE authorize)
-//   3. POST /login                      (submit credentials)
+//   3. GET  /login, POST /login         (CSRF token, then credentials)
 //   4. POST /oauth2/token               (exchange code for JWT)
 //   5. POST /api/v1/reservations        (hold seat — Bearer token)
 //   6. POST /api/v1/reservations/{id}/submit-payment  (kick off saga)
@@ -135,10 +135,18 @@ function authenticateUser(username, password) {
     return null;
   }
 
-  // Step 3: Submit login form
+  // Step 3: Fetch the login form for its CSRF token (STAM-453: identity
+  // rejects a login POST without it), then submit credentials. k6's per-VU
+  // cookie jar keeps the session the token is bound to.
+  const loginPage = http.get(`${GATEWAY_URL}/login`, { tags: { step: "login-page" } });
+  const csrfMatch = (loginPage.body || "").match(/name="_csrf" value="([^"]+)"/);
+  if (!csrfMatch) {
+    authFailures.add(1);
+    return null;
+  }
   const loginRes = http.post(
     `${GATEWAY_URL}/login`,
-    { username, password },
+    { username, password, _csrf: csrfMatch[1] },
     {
       tags: { step: "login" },
       redirects: 0,

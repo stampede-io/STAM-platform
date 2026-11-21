@@ -42,10 +42,16 @@ login() {
   curl -s -c "$jar" -b "$jar" -o /dev/null \
     "$GATEWAY_URL/oauth2/authorize?response_type=code&client_id=stampede-spa&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fcallback&scope=openid%20profile%20email%20offline_access&code_challenge=$challenge&code_challenge_method=S256"
 
+  # STAM-453: identity's login form carries a CSRF token bound to this
+  # session; a POST without it is rejected with 403.
+  local csrf; csrf=$(curl -s -c "$jar" -b "$jar" "$GATEWAY_URL/login" \
+    | sed -n 's/.*name="_csrf" value="\([^"]*\)".*/\1/p')
+
   local h2="$WORKDIR/h2-$RANDOM.txt"
   curl -s -c "$jar" -b "$jar" -D "$h2" -o /dev/null \
     -X POST "$GATEWAY_URL/login" \
-    --data-urlencode "username=$email" --data-urlencode "password=$password"
+    --data-urlencode "username=$email" --data-urlencode "password=$password" \
+    --data-urlencode "_csrf=$csrf"
   local loc; loc=$(grep -i '^Location:' "$h2" | sed 's/Location: //I' | tr -d '\r')
 
   local h3="$WORKDIR/h3-$RANDOM.txt"
