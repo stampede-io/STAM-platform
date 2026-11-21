@@ -7,7 +7,10 @@ runcmd:
   # the kubeconfig world-readable (0644) specifically so the ssh-fetch step
   # below (AC3's kubeconfig_path output) works as a non-root SSH user without
   # a second sudo hop.
-  - curl -sfL https://get.k3s.io | sh -s - server --write-kubeconfig-mode 644
+  # --disable traefik: k3s bundles Traefik, and its klipper LoadBalancer
+  # binds the node's 80/443. ingress-nginx (platform/ingress/README.md) needs
+  # those ports, so with Traefik left on its LoadBalancer stays <pending>.
+  - curl -sfL https://get.k3s.io | sh -s - server --write-kubeconfig-mode 644 --disable traefik
   - mkdir -p /home/${admin_username}/.kube
   - cp /etc/rancher/k3s/k3s.yaml /home/${admin_username}/.kube/config
   - chown -R ${admin_username}:${admin_username} /home/${admin_username}/.kube
