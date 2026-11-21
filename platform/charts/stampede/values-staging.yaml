@@ -8,10 +8,14 @@
 # STAM-62's bump automation fills these in with a real SHA on every
 # merge to that service's main, staging would otherwise be pulling an
 # image tag nothing ever published.
+#
+# Pinned by hand to the v0.4.0 release SHAs (2026-11-21), the images CI
+# pushed when each release PR merged to main. Until GITOPS_PAT exists
+# (STAM-62) the bot can't do it, and the blank default pulls nothing.
 gateway:
   replicaCount: 2
   image:
-    tag: ""
+    tag: "1b4650535594a4c37329389a746beaa968276ef2"
   # STAM-55 AC6: never "*" — gateway's CorsConfig already enforces one
   # explicit origin, this is just which one. Placeholder until the SPA's
   # actual Vercel deployment URL exists; update in the same PR that wires
@@ -22,17 +26,17 @@ identity:
   replicaCount: 2
   secretName: identity-db-secret
   image:
-    tag: ""
+    tag: "75f860c8e75baa0441371e42b997ccc518034891"
 catalog:
   replicaCount: 2
   secretName: catalog-db-secret
   image:
-    tag: ""
+    tag: "aa3a509e7122d84361dad7d76580075e070ed8f2"
 booking:
   replicaCount: 2
   secretName: booking-db-secret
   image:
-    tag: ""
+    tag: "c7a32d369f5c4be7849573ba8b5da16dffabe210"
 payment:
   # code-review (STAM-63): bumped from 1 -> 2 to match booking. Argo
   # Rollouts has no trafficRouting provider here, so setWeight is only
@@ -41,9 +45,9 @@ payment:
   replicaCount: 2
   secretName: payment-db-secret
   image:
-    tag: ""
+    tag: "299f31a7460d96c235d29ae8321c68c174f07542"
 notification:
   replicaCount: 1
   secretName: notification-db-secret
   image:
-    tag: ""
+    tag: "3ff842acb8ebb530b2aa3a345857659478bdcc81"
