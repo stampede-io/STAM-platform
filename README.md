@@ -254,6 +254,9 @@ Rate-limit burst test: [`load-tests/rate-limit-burst.js`](load-tests/rate-limit-
 | [0003](docs/adr/0003-kafka-over-rabbitmq-and-sqs.md)         | Kafka as the event backbone (replayable log, per-partition ordering) | Accepted |
 | [0004](docs/adr/0004-k8s-dns-over-eureka.md)                 | K8s DNS instead of Eureka | Accepted |
 | [0005](docs/adr/0005-bff-token-handler-in-gateway.md)        | BFF token handler in the gateway | Accepted |
+| [0006](docs/adr/0006-single-postgres-five-databases.md)      | One Postgres instance, five databases (cluster only) | Accepted |
+| [0007](docs/adr/0007-strimzi-single-broker-kraft.md)         | Strimzi, single broker, KRaft | Accepted |
+| [0008](docs/adr/0008-aws-ec2-for-the-demo-cluster.md)        | AWS EC2 + k3s for the demo cluster, replacing Azure | Accepted |
 
 **STAM-56 evidence (the seven Eureka/Config Server deletion PRs behind ADR-0004):**
 [STAM-gateway#13](https://github.com/stampede-io/STAM-gateway/pull/13) ·
@@ -289,47 +292,64 @@ Each service is its own git repo under the [`stampede-io`](https://github.com/st
 zero cloud dependency, the default day-to-day target while learning
 Kubernetes fundamentals.
 
-### Azure VM + k3s (`platform/terraform/`)
+### AWS EC2 + k3s (`platform/terraform/`)
 
-Provisions a single-node k3s cluster on a real Azure VM. **This costs real
-money the moment `terraform apply` runs** — a `Standard_B2ms` VM plus a
-64GB SSD plus a storage account, running continuously until
-`terraform destroy`. Nothing here should be applied without deciding that
-spend is worth it for what you're testing that day.
+Provisions a single-node k3s cluster on one EC2 instance for the demo
+([ADR-0008](docs/adr/0008-aws-ec2-for-the-demo-cluster.md)). **This costs
+real money the moment `terraform apply` runs.** It is meant to live for
+one demo week at most. The default `m6i.2xlarge` (8 vCPU / 32 GB, full CPU
+with no burst credits) in `ap-south-1` is about $0.40/hour; with the 64 GB
+gp3 disk and the Elastic IP, a full week is about $70 of the $200 of
+credits. Do the Dev→main release and rehearse on kind *before* applying,
+so the week isn't spent waiting on CI, and destroy it at the end.
 
-**State**: remote, in Azure Storage, not local `.tfstate` files — so the
-state the kind cluster above never needed now has to be shared safely
-across whoever (or whatever CI) runs `terraform apply`/`destroy` against
-this, and the azurerm backend's blob lease gives that locking for free.
-One-time setup, before the first `terraform init` ever runs:
+A Budget alarm (`budget_limit_usd`, default $100) emails `budget_email` at
+50%, 80% and 100%. It ignores credits on purpose: counting them, the
+"actual cost" stays near $0 until the credits are gone.
+
+**State** is remote, in S3, with the S3 backend's native lockfile
+(Terraform >= 1.10, no DynamoDB). One-time setup, after `aws configure`:
 
 ```bash
 cd platform/terraform/bootstrap
-LOCATION=eastus ./bootstrap-state.sh
+REGION=ap-south-1 ./bootstrap-state.sh   # prints the terraform init flags
 ```
 
-This prints the `-backend-config` flags `terraform init` needs (storage
-account name is randomly generated — save it, every teammate needs the
-same three values). The state storage account itself can't be *in* the
-state it holds — chicken-and-egg — so this step is a plain `az` script,
-not Terraform, and it's the one piece of this infra that `terraform
-destroy` (below) does not and should not touch.
+The state bucket can't live in the state it holds, so it's a plain
+`aws` script, and `terraform destroy` leaves it alone.
+
+On Windows, run these from **Git Bash**, not PowerShell: the apply's last
+step polls the node over SSH with a bash script, and from PowerShell
+`bash` can resolve to WSL's, which has no access to your SSH key.
 
 ```bash
 cd platform/terraform
-cp terraform.tfvars.example terraform.tfvars   # fill in operator_ip, etc.
-terraform init -backend-config=...             # the three values above
-terraform apply -auto-approve                  # real Azure spend starts here
-terraform output                               # vm_public_ip, kubeconfig_path, ssh_command
-terraform destroy -auto-approve                # tears down rg-stampede entirely; state storage survives
+cp terraform.tfvars.example terraform.tfvars   # operator_ip, budget_email
+terraform init -backend-config=...             # the three flags printed above
+terraform apply                                # real spend starts here
+terraform output                               # public_ip, ssh_command, backup_bucket, region
 ```
+
+Then point DuckDNS at `public_ip` and follow
+[`platform/ingress/README.md`](platform/ingress/README.md) for TLS. The
+ingress serves the API only. The SPA is not deployed on the cluster yet;
+wherever it runs, the browser must reach the API on the SPA's own origin
+(a proxy or rewrite), or the BFF refresh cookie becomes third-party.
 
 ### Resource teardown discipline
 
-Don't leave `vm-stampede` running between sessions. Verify with:
+Between sessions, stop the instance (the Elastic IP keeps the DuckDNS
+record valid; you still pay for the disk and the IP):
 
 ```bash
-az resource list --resource-group rg-stampede --output table   # should be empty after destroy
+aws ec2 stop-instances --instance-ids $(aws ec2 describe-instances   --filters Name=tag:Name,Values=stampede-k3s --query 'Reservations[].Instances[].InstanceId' --output text)
+```
+
+After the demo:
+
+```bash
+terraform destroy
+aws resourcegroupstaggingapi get-resources --tag-filters Key=Project,Values=stampede   # should be empty
 ```
 
 ## Observability
@@ -350,7 +370,7 @@ Test coverage at M2 was two separate layers: 38 Playwright E2E specs exercise th
 
 **Milestone 1 (tag: `v0.1.0`) — complete.** Compose-based deploy, catalog + booking + payment + Kafka + Redis + Postgres. Full hold → pay → confirm saga with compensation and crash recovery.
 
-**Milestone 3 (tag: `v0.3.0`, 2026-10-14):** Kubernetes-native deployment — raw manifests on kind, Terraform for Azure VM + k3s, Helm umbrella chart, shared Postgres and Redis on cluster, Sealed Secrets, ArgoCD app-of-apps. Eureka and Config Server are deleted (STAM-56), fulfilling ADR-0004. Some Sprint 3 stories still need the live k3s cluster to close; see below.
+**Milestone 3 (tag: `v0.3.0`, 2026-10-14):** Kubernetes-native deployment — raw manifests on kind, Terraform for a k3s node (Azure at the time, AWS since STAM-457), Helm umbrella chart, shared Postgres and Redis on cluster, Sealed Secrets, ArgoCD app-of-apps. Eureka and Config Server are deleted (STAM-56), fulfilling ADR-0004. Some Sprint 3 stories still need the live k3s cluster to close; see below.
 
 ## Known limitations
 
@@ -360,11 +380,11 @@ From the STAM-71 hardening audit, [`docs/hardening-audit.md`](docs/hardening-aud
 - **Identity's signing key isn't set on the cluster yet** ([STAM-454](https://puliththewmika-dev.atlassian.net/browse/STAM-454)). Identity now loads `IDENTITY_RSA_PRIVATE_KEY` and derives the `kid` from the key, so a restart no longer makes validators reject new tokens. Until the key is sealed into `identity-db-secret` ([how](platform/sealed-secrets/README.md#identitys-jwt-signing-key-stam-454)), though, each identity pod start still invalidates tokens issued before it, and two replicas would sign with different keys.
 - **Only catalog and booking dead-letter.** Payment, identity and notification have no DLQ recoverer; `payments.commands.dlq` and `identity.audit.dlq` are never written. Payment and identity send to Kafka directly with no outbox (booking is the only outbox). Since STAM-452 a non-JSON record no longer stalls any consumer, but in those three services it is logged and skipped rather than kept.
 
-**Not yet proven on the real cluster.** These need `az login` against the k3s VM:
-- `kubectl auth can-i` for workload ServiceAccounts, and reading the applied NSG back from Azure. NSG rules and the non-root `securityContext` are proven from config and on kind only.
+**Not yet proven on the real cluster.** These need the k3s node on AWS to be up:
+- `kubectl auth can-i` for workload ServiceAccounts, and reading the applied security group back from AWS. Its rules and the non-root `securityContext` are proven from config and on kind only.
 - Canary auto-rollback and blue-green promotion were drilled on kind against stand-in pods, not the real services, and neither is screen-recorded.
 - A `git revert` rollback through ArgoCD has never been timed end to end.
-- The Postgres restore drill ran on kind; the Azure Blob download step has never run, because no backup has landed in Blob yet.
+- The Postgres restore drill ran on kind; the S3 download step has never run, because no backup has landed in S3 yet.
 
 **Not built**
 - **No expand → migrate → contract migration yet.** Every schema change so far is additive, so zero-downtime renames and drops are untested.

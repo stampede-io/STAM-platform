@@ -1,42 +1,38 @@
 #!/usr/bin/env bash
-# One-time setup for the remote state backend (AC6). Terraform can't create
-# the storage account it's about to store its own state in, so this is a
-# plain az cli script, run once, by hand, before the first `terraform init`
-# in platform/terraform/. Safe to re-run — every step is idempotent.
+# One-time setup for the remote state backend. Terraform can't create the
+# bucket it stores its own state in, so this is a plain aws cli script, run
+# once by hand before the first `terraform init` in platform/terraform/.
+# Locking uses the S3 backend's native lockfile (Terraform >= 1.10), so no
+# DynamoDB table is needed. Safe to re-run.
 set -euo pipefail
 
-RG="rg-stampede-tfstate"
-LOCATION="${LOCATION:-eastus}"
-STORAGE_ACCOUNT="sttfstampede$(openssl rand -hex 3)"
-CONTAINER="tfstate"
+REGION="${REGION:-ap-south-1}"
+ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+BUCKET="${BUCKET:-stampede-tfstate-$ACCOUNT_ID}"
 
-az group create --name "$RG" --location "$LOCATION" --output none
+if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+  if [ "$REGION" = "us-east-1" ]; then
+    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" >/dev/null
+  else
+    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
+      --create-bucket-configuration "LocationConstraint=$REGION" >/dev/null
+  fi
+fi
+aws s3api put-bucket-versioning --bucket "$BUCKET" \
+  --versioning-configuration Status=Enabled
+aws s3api put-public-access-block --bucket "$BUCKET" \
+  --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 
-az storage account create \
-  --name "$STORAGE_ACCOUNT" \
-  --resource-group "$RG" \
-  --location "$LOCATION" \
-  --sku Standard_LRS \
-  --encryption-services blob \
-  --allow-blob-public-access false \
-  --output none
-
-az storage container create \
-  --name "$CONTAINER" \
-  --account-name "$STORAGE_ACCOUNT" \
-  --auth-mode login \
-  --output none
-
-cat <<EOF
+cat <<MSG
 
 Remote state backend ready. Run this from platform/terraform/:
 
   terraform init \\
-    -backend-config="resource_group_name=$RG" \\
-    -backend-config="storage_account_name=$STORAGE_ACCOUNT" \\
-    -backend-config="container_name=$CONTAINER" \\
-    -backend-config="key=stampede.tfstate"
+    -backend-config="bucket=$BUCKET" \\
+    -backend-config="key=stampede.tfstate" \\
+    -backend-config="region=$REGION"
 
-Save these three values (storage account name especially — it's random) —
-every teammate running terraform needs the same -backend-config args.
-EOF
+After the demo, \`terraform destroy\` removes everything except this state
+bucket. Delete it last: aws s3 rb s3://$BUCKET --force
+MSG
