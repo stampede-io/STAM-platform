@@ -1,0 +1,20 @@
+# poison-message-drill.sh on compose-dev, 2026-11-20, AFTER STAM-452 (catalog, booking, notification, payment, identity rebuilt from the fix branches)
+=== 1. deserializable poison on payments.events
+  16:05:26.665 Received PaymentAuthorized for reservation=5bcdf8cd-431f-488b-91c3-c02ac96d305c
+  16:05:27.687 Record in retry and not yet recovered
+  16:05:27.694 Received PaymentAuthorized for reservation=5bcdf8cd-431f-488b-91c3-c02ac96d305c
+  16:05:29.705 Record in retry and not yet recovered
+  16:05:29.710 Received PaymentAuthorized for reservation=5bcdf8cd-431f-488b-91c3-c02ac96d305c
+  16:05:33.803 Record in retry and not yet recovered
+  16:05:33.904 Received PaymentAuthorized for reservation=5bcdf8cd-431f-488b-91c3-c02ac96d305c
+in payments.events.dlq: 1
+=== 2. non-JSON poison on reservations.events (STAM-452)
+partition 0 offset 14: catalog lag 0, notification lag 0, catalog 'Consumer exception' lines in 10 s: 0, in DLQ: 1
+after recovery: catalog lag 0, notification lag 0
+=== Result
+1 PASS: retried with backoff, then dead-lettered
+2 PASS: dead-lettered, partition not blocked
+
+# extra: one non-JSON record each on payments.commands, payments.events and identity.audit
+payment-service lag 0, booking-saga-consumer lag 0, identity-audit-log lag 0, no 'Consumer exception' loop
+payments.events.dlq and reservations.events.dlq hold the original bytes: not-json-at-all

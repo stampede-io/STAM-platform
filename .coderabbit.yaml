@@ -110,9 +110,11 @@ reviews:
 
     - path: "terraform/**"
       instructions: >
-        Terraform for Azure VM + k3s (Sprint 3). Flag any credential or key in
-        a .tf file or committed .tfvars, state configured to a local backend,
-        and security groups or NSGs opening ports to 0.0.0.0/0.
+        Terraform for the AWS EC2 + k3s demo node (ADR-0008). Flag any credential
+        or key in a .tf file or committed .tfvars, state configured to a local
+        backend, security group rules opening anything but 80/443 to 0.0.0.0/0
+        (22 must stay operator_ip only, 6443 closed), IAM policies wider than
+        the backup bucket, and burstable t-family instance types (ADR-0008).
 
     - path: "scripts/**"
       instructions: >

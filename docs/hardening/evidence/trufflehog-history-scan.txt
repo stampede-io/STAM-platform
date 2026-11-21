@@ -1,0 +1,11 @@
+# TruffleHog 3.88.0 (docker), full git history, every repo, 2026-11-20
+.github            chunks     67  verified 0  unverified 0
+STAM-booking       chunks    899  verified 0  unverified 0
+STAM-catalog       chunks    411  verified 0  unverified 0
+STAM-frontend      chunks    336  verified 0  unverified 0
+STAM-gateway       chunks    236  verified 0  unverified 0
+STAM-gitops        chunks     73  verified 0  unverified 0
+STAM-identity      chunks    287  verified 0  unverified 0
+STAM-notification  chunks    175  verified 0  unverified 0
+STAM-payment       chunks    272  verified 0  unverified 0
+STAM-platform      chunks    483  verified 0  unverified 0

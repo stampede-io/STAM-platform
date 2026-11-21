@@ -1,0 +1,11 @@
+# run 2026-11-20T17:53:46Z on compose-dev, after STAM-456
+token for rbac-1795197226872@stampede.test, roles=["USER"]
+OK   GET  /api/v1/venues (public read) -> 200
+OK   POST /api/v1/venues as USER -> 403
+OK   PUT  /api/v1/users/{id}/role as USER -> 403
+OK      cross-site POST /login with no CSRF token -> 403 (rejected)
+
+# ADMIN token through the gateway (drill admin promoted in the local identity DB as setup)
+admin token roles = [ 'ADMIN' ]
+PUT /api/v1/users/{id}/role as ADMIN -> 200 {"id":"e94f5f85-d852-4fc2-92a0-1764fd274953","email":"target-1795197227326@stampede.test","role":"ORGANIZER"}
+target role in DB = ORGANIZER

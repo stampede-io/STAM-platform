@@ -10,10 +10,17 @@ alertmanager:
       - alertmanager-telegram
   config:
     global:
-      smtp_smarthost: "mailhog:1025"
+      # STAM-450: staging's Mailhog (platform/charts/stampede infra.mailhog).
+      # The short name "mailhog" never resolved from this namespace. Mailhog
+      # has no TLS, and Alertmanager defaults to require_tls: true and refuses
+      # PLAIN auth over plaintext, so both are off for this sink. For a real
+      # relay: turn require_tls back on and restore
+      #   smtp_auth_username: "alertmanager"
+      #   smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-smtp/password
+      # (the alertmanager-smtp secret stays mounted for exactly that).
+      smtp_smarthost: "mailhog.staging.svc.cluster.local:1025"
+      smtp_require_tls: false
       smtp_from: "alertmanager@stampede.local"
-      smtp_auth_username: "alertmanager"
-      smtp_auth_password_file: /etc/alertmanager/secrets/alertmanager-smtp/password
     route:
       receiver: default
       routes:

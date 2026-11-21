@@ -1,24 +1,27 @@
 resource "null_resource" "fetch_kubeconfig" {
-  depends_on = [azurerm_linux_virtual_machine.stampede]
+  depends_on = [aws_eip.stampede]
 
   triggers = {
-    vm_id = azurerm_linux_virtual_machine.stampede.id
+    instance_id = aws_instance.stampede.id
   }
 
   provisioner "local-exec" {
-    # cloud-init takes a little while after the VM reports Running — poll
-    # for the .k3s-ready marker (touched last in cloud-init.yaml) instead of
-    # guessing a fixed sleep, then scp the kubeconfig down. AC2's "ready in
-    # <=10 min" is measured from here: apply doesn't return until this
-    # succeeds or the retry budget below is exhausted.
+    # Without this, local-exec uses cmd.exe on Windows and the script below
+    # fails. Run terraform from Git Bash on Windows: from PowerShell, "bash"
+    # can resolve to WSL's, which has neither this path nor your SSH key.
+    interpreter = ["bash", "-c"]
+
+    # cloud-init takes a while after the instance reports running. Poll for
+    # the .k3s-ready marker (touched last in cloud-init.yaml) instead of a
+    # fixed sleep, then scp the kubeconfig down. The <=10 min readiness
+    # budget is measured here: apply doesn't return until this succeeds or
+    # the 40 x 15 s retries run out.
     command = <<-EOT
       set -e
-      ip="${azurerm_public_ip.stampede.ip_address}"
-      user="${var.admin_username}"
-      # Derive the private key from the configured public key path rather
-      # than trusting ssh-agent/default-identity discovery — ssh_public_key_path
-      # has no fixed default, so a non-standard path here would otherwise
-      # make this fetch fail even though the VM itself accepts the key fine.
+      ip="${aws_eip.stampede.public_ip}"
+      user="${local.ssh_user}"
+      # Private key derived from the configured public key path, so a
+      # non-default key works without ssh-agent.
       key="$(echo "${var.ssh_public_key_path}" | sed 's/\.pub$//')"
       for i in $(seq 1 40); do
         if ssh -i "$key" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 "$user@$ip" test -f /home/$user/.k3s-ready 2>/dev/null; then
@@ -33,18 +36,28 @@ resource "null_resource" "fetch_kubeconfig" {
   }
 }
 
-output "vm_public_ip" {
-  description = "Public IP of the k3s VM."
-  value       = azurerm_public_ip.stampede.ip_address
+output "public_ip" {
+  description = "Elastic IP of the k3s node. Point the DuckDNS record at this."
+  value       = aws_eip.stampede.public_ip
 }
 
 output "kubeconfig_path" {
-  description = "Local path to the fetched kubeconfig. Its server address is 127.0.0.1:6443 (k3s' own default) — 6443 is not open on the NSG, so kubectl needs an SSH tunnel (see ssh_command) to reach it remotely, or run kubectl directly on the VM over SSH."
+  description = "Local path to the fetched kubeconfig. Its server is 127.0.0.1:6443 (k3s default); 6443 is closed in the security group, so tunnel it (ssh_command with -L 6443:localhost:6443) or run kubectl on the node."
   value       = "${path.module}/kubeconfig"
   depends_on  = [null_resource.fetch_kubeconfig]
 }
 
 output "ssh_command" {
-  description = "SSH into the VM, or add -L 6443:localhost:6443 to tunnel kubectl through it."
-  value       = "ssh ${var.admin_username}@${azurerm_public_ip.stampede.ip_address}"
+  description = "SSH into the node, or add -L 6443:localhost:6443 to tunnel kubectl through it."
+  value       = "ssh ${local.ssh_user}@${aws_eip.stampede.public_ip}"
+}
+
+output "backup_bucket" {
+  description = "S3 bucket the postgres-backup CronJob writes to (substitute into postgres-backup-cronjob.yaml)."
+  value       = aws_s3_bucket.backups.bucket
+}
+
+output "region" {
+  description = "Region everything lives in (the backup CronJob needs it)."
+  value       = var.region
 }

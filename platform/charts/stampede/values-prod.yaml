@@ -6,6 +6,14 @@
 # which is exactly the version-drift AC8 guards against on the service
 # side (helm/Chart.yaml's appVersion must already match this at publish time).
 
+# STAM-450 prod email decision: prod keeps the Mailhog sink from values.yaml
+# (infra.mailhog.enabled: true). STAMPEDE has no real customers and Stripe runs
+# in test mode, so a real relay would only deliver to made-up addresses. Emails
+# are still generated and visible in the inbox, not dropped. Switching to a
+# real relay (option B): set infra.mailhog.enabled: false, point notification's
+# MAIL_HOST/MAIL_PORT at the relay with credentials from a Sealed Secret, and
+# add an egress NetworkPolicy to that host only.
+
 gateway:
   replicaCount: 3
   image:

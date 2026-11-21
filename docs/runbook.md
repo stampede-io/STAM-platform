@@ -247,11 +247,11 @@ values are not.
 
 Nightly `postgres-backup` CronJob (`platform/backup/postgres-backup-cronjob.yaml`)
 runs at 02:00 UTC: `pg_dump` all 5 databases, gzip, upload to the
-`stampede-backups` Azure Blob container (cool tier) as
-`<date>_<db>.sql.gz`, authenticated via a service-principal Secret scoped
-to just that container (`platform/backup/setup-backup-blob.sh` creates it
-with least privilege, not a subscription-wide role). A 30-day lifecycle
-rule on the container deletes anything older automatically — no manual
+the S3 bucket Terraform creates (`terraform output backup_bucket`) as
+`<date>_<db>.sql.gz`, authenticated by the EC2 instance role over IMDSv2,
+which may read and write that one bucket and nothing else, so no access key
+exists in any Secret. A 30-day lifecycle
+rule on the bucket deletes anything older automatically — no manual
 cleanup, no unbounded storage growth.
 
 **Restore drill** — the actual procedure, run this after any backup you'd
@@ -259,7 +259,7 @@ trust in a real incident:
 
 1. Create a scratch namespace: `kubectl create namespace restore-drill`.
 2. Deploy a bare Postgres pod there (`kubectl run restore-pg --image=postgres:16-alpine --env="POSTGRES_PASSWORD=drill" -n restore-drill`).
-3. Pull last night's dump down: `az storage blob download --account-name <acct> --container-name stampede-backups --name <date>_catalog_db.sql.gz --file ./catalog_db.sql.gz --auth-mode login`.
+3. Pull last night's dump down: `aws s3 cp s3://<backup_bucket>/<date>_catalog_db.sql.gz ./catalog_db.sql.gz`.
 4. Copy it into the pod and restore: `kubectl cp ./catalog_db.sql.gz restore-drill/restore-pg:/tmp/` then `kubectl exec -n restore-drill restore-pg -- sh -c "gunzip -c /tmp/catalog_db.sql.gz | psql -U postgres"`.
 5. Verify row counts match production for a couple of known tables (`SELECT count(*) FROM venues;` etc.) against the real `catalog_db` via `kubectl exec postgres-0`.
 6. Tear down: `kubectl delete namespace restore-drill`.
@@ -273,11 +273,11 @@ entirely), and diffed row counts on `venues` (2 = 2) and `seats` (3 = 3)
 against the real `catalog_db`. Exact match. Scratch namespace torn down
 after.
 
-**Honest limit:** step 3 (blob *download*) wasn't run against a real
-Azure container this session, because no backup has actually landed in
-Azure Blob yet — that needs `setup-backup-blob.sh` run once against a
-real Azure subscription (creates the container, lifecycle policy, and
-scoped service principal) and the resulting Secret created in-cluster,
-the same gate as STAM-50's `terraform apply`. Everything else the drill
+**Honest limit:** step 3 (the S3 *download*) wasn't run against a real
+bucket, because no backup has actually landed in
+S3 yet. That needs `terraform apply` on AWS and the CronJob applied with
+its two placeholders filled (see the header of
+`postgres-backup-cronjob.yaml`),
+the same gate as STAM-457's `terraform apply`. Everything else the drill
 depends on — the dump is a faithful, restorable snapshot of real data —
 is proven, not assumed.

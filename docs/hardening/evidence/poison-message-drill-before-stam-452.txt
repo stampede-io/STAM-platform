@@ -1,0 +1,17 @@
+# poison-message-drill.sh on compose-dev, 2026-11-20, BEFORE STAM-452
+=== 1. deserializable poison on payments.events
+  14:46:54.488 Received PaymentAuthorized for reservation=ffec437a-c879-4691-a7d0-ccd2d736fbb5
+  14:46:55.495 Record in retry and not yet recovered
+  14:46:55.512 Received PaymentAuthorized for reservation=ffec437a-c879-4691-a7d0-ccd2d736fbb5
+  14:46:57.518 Record in retry and not yet recovered
+  14:46:57.533 Received PaymentAuthorized for reservation=ffec437a-c879-4691-a7d0-ccd2d736fbb5
+  14:47:01.622 Record in retry and not yet recovered
+  14:47:01.624 Received PaymentAuthorized for reservation=ffec437a-c879-4691-a7d0-ccd2d736fbb5
+in payments.events.dlq: 1
+=== 2. non-JSON poison on reservations.events (STAM-452)
+partition 4 offset 12: catalog lag 1, notification lag 1, catalog 'Consumer exception' lines in 10 s: 19339, in DLQ: 0
+>>> recovering: skip offset 12 for both groups
+after recovery: catalog lag 0, notification lag 0
+=== Result
+1 PASS: retried with backoff, then dead-lettered
+2 FINDING (STAM-452): partition 4 blocked until offsets were reset by hand
